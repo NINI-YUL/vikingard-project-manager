@@ -8,7 +8,7 @@
 
 - 后台同步优先用**企业内部应用 access token**，通过 `x-acs-dingtalk-access-token` 调用 AI 表格。官方称企业应用 token 用于服务端 API 获取应用资源；第一方 SDK `notable_2_0` 的接口均声明该请求头。[应用 token][org-token] [SDK 类型][sdk-types] [SDK 实现][sdk-client]
 - 用户 OAuth token 不是后台同步的默认必需项，只在用户授权或识别当前用户时使用。`notable_2_0` 不要求旧版 `operatorId`，定时同步不应依赖人工 OAuth。[用户 token][user-token] [SDK 实现][sdk-client]
-- 最小权限为 `Notable.Base.Read.All` 和 `Notable.Base.Write.All`。开放平台现场显示均需审批，并随应用版本发布后生效。[获取所有表][get-sheets] [新增记录][insert-records]
+- 最小权限为 `Notable.Base.Read.All` 和 `Notable.Base.Write.All`。钉钉官方公开权限目录当前只登记了这两个 AI 表格权限，并把“获取所有数据表”等读取接口映射到 `Notable.Base.Read.All`；没有登记可单独申请的 `Notable.Base.Read`。因此控制台只显示 `.Read.All` 是当前平台目录的正常结果，不是搜索方式错误。[官方权限目录][official-scope-list] [官方 API 目录][official-api-list]
 - 官方只明确 `baseId` 是必填路径参数/多维表 ID，未找到分享链接固定片段必然等于 baseId 的第一方说明。PoC 应取得候选值后调用获取所有表接口校验。[获取所有表][get-sheets]
 - 人员字段格式为 `[{"uid":"..."}]`，不能写姓名或手机号。官方未明确这里的 `uid` 等同 `userId` 还是 `unionId`，必须实测，并维护两者映射。[SDK 类型][sdk-types] [unionId 转 userId][union-to-user]
 
@@ -105,7 +105,27 @@ SDK 将 `fields` 定义为开放字典，没有每种字段的完整 JSON Schema
 
 使用正确主机和请求头后，网关错误继续要求权限 `Notable.Base.Read`，但开放平台权限页能够申请且已开通的权限只有 `Notable.Base.Read.All`；错误中的直达补权链接也只会跳回 `.All` 权限。当前资料无法解释网关要求的权限名与控制台可申请权限名不一致。这一现象已超出本地配置可验证范围，应提交钉钉官方技术工单，请其确认 Notable 2.0 的权限映射或网关配置；在官方回复前不应反复改 token、切换主机或申请无关权限。
 
-阶段 5（OAuth 授权及表、字段、记录和人员字段验证）当前记为**部分完成**：应用 token、用户 OAuth、企业归属、权限发布和请求格式已完成验证，但实际 Base 读写及人员字段验证仍受平台权限映射问题阻塞，需等待官方确认后继续。
+#### `Notable.Base.Read` 与 `.Read.All` 不一致的官方证据和处理路径（2026-09-10）
+
+进一步核对钉钉第一方公开元数据后，可以确认这不是用户漏配权限：
+
+- 钉钉官方公开权限目录 `/api/official/scope/list` 只返回 `Notable.Base.Read.All`（“AI 表格应用读权限”）和 `Notable.Base.Write.All`，没有返回 `Notable.Base.Read`；其中读取权限明确关联“获取所有数据表、获取数据表、获取所有字段、获取记录、列出多行记录”。[官方权限目录][official-scope-list]
+- 钉钉官方 OpenAPI 目录把“获取所有数据表”标识为 `notable_1.0#GetAllSheets`，所需 scope 是 `Notable.Base.Read.All`，企业内部应用（`ORG`）状态为 `FULLY_OPEN`；同一条元数据把 `operatorId` 标为必填查询参数。[官方 API 目录][official-api-list]
+- 钉钉第一方 Node.js SDK `@alicloud/dingtalk@2.2.46` 的 Notable 1.0 实现调用 `GET /v1.0/notable/bases/{baseId}/sheets`，传 `operatorId`，并使用 `x-acs-dingtalk-access-token`；Notable 2.0 实现调用 `GET /v2.0/notable/bases/{baseId}/sheets`，不传 `operatorId`，但 SDK 源码不声明 scope。[1.0 SDK 实现][sdk-client-v1] [2.0 SDK 实现][sdk-client]
+
+由此可见，公开权限目录和可申请权限与 **Notable 1.0** 是一致的，而实测 **Notable 2.0** 网关要求一个官方权限目录中不存在的 `Notable.Base.Read`。现有第一方资料不足以证明 `.Read.All` 应自动包含 `.Read`，也没有合法入口可以单独申请 `.Read`；不能继续靠猜测权限、重建应用或申请无关权限解决。
+
+当前可执行路径：
+
+1. 保留已开通并已随版本发布的 `Notable.Base.Read.All`，不要删除或替换。
+2. 先做一次只读兼容验证：用同一企业内部应用 token 和 `x-acs-dingtalk-access-token` 调用 `GET /v1.0/notable/bases/{baseId}/sheets?operatorId={当前操作者unionId}`。`operatorId` 必须使用能够访问该 AI 表格的钉钉用户身份；不要在日志或文档中记录 token。
+3. 若 1.0 成功，PoC 先使用官方目录明确支持的 Notable 1.0 读取链路；同时把升级到 2.0 作为平台权限映射问题保留，不阻塞当前只读验证。
+4. 若 1.0 仍返回权限拒绝，记录响应中的错误码和 `requestId`，连同以下证据提交钉钉官方工单：应用类型为企业内部应用、`.Read.All` 已开通并发布、官方权限目录映射为 `.Read.All`、1.0 与 2.0 的完整请求路径（脱敏）、两个响应的错误码与 `requestId`。请求官方确认该企业/应用是否开通 Notable 能力，以及 2.0 网关为何要求未公开的 `.Read`。
+5. 按错误类型分流：`operatorId`/身份错误先核对 unionId 和该用户对 Base 的访问权；资源不存在再核对 `baseId`；只有权限拒绝才归入权限映射问题，避免把不同故障混在一起。
+
+2026-09-10 已完成真实环境只读验证：使用能够访问测试 AI 表格的用户 `unionId` 作为 `operatorId`，同一企业内部应用 token 调用 Notable 1.0 获取所有数据表返回 HTTP 200，并识别到测试 Base 中 4 张数据表。验证过程未记录 token、用户标识或表格内容。由此确认 `.Read.All` 在 1.0 链路生效，当前 32 位候选值可作为该测试 Base 的 `baseId`。PoC 采用 1.0 读取链路；2.0 权限映射异常作为平台兼容问题保留，不再阻塞只读实现。
+
+阶段 5（OAuth 授权及表、字段、记录和人员字段验证）当前记为**部分完成**：应用 token、用户 OAuth、企业归属、权限发布、请求格式、测试 Base 标识及 Notable 1.0 数据表读取已完成验证；记录字段结构、写入及人员字段仍待后续受控验证。Notable 2.0 权限映射异常不再阻塞当前只读 PoC。
 
 1. 用企业应用 token 调用 `GET .../sheets`；失败时记录错误码，不先引入 OAuth。
 2. 确认两张测试表及 sheet ID，列出字段并核对 ID、名称、类型。
@@ -120,6 +140,9 @@ SDK 将 `fields` 定义为开放字典，没有每种字段的完整 JSON Schema
 [user-token]: https://open.dingtalk.com/document/orgapp/obtain-user-token
 [sdk-types]: https://unpkg.com/@alicloud/dingtalk@2.2.46/dist/notable_2_0/client.d.ts
 [sdk-client]: https://unpkg.com/@alicloud/dingtalk@2.2.46/src/notable_2_0/client.ts
+[sdk-client-v1]: https://unpkg.com/@alicloud/dingtalk@2.2.46/src/notable_1_0/client.ts
+[official-scope-list]: https://open.dingtalk.com/api/official/scope/list
+[official-api-list]: https://open.dingtalk.com/api/backstage/getOpenApiList?pageNo=1&pageSize=20&keywords=%E8%8E%B7%E5%8F%96%E6%89%80%E6%9C%89%E6%95%B0%E6%8D%AE%E8%A1%A8
 [get-sheets]: https://open.dingtalk.com/document/orgapp/api-notable-getallsheets
 [get-fields]: https://open.dingtalk.com/document/orgapp/api-noatable-getallfields
 [list-records]: https://open.dingtalk.com/document/orgapp/api-notable-listrecords
