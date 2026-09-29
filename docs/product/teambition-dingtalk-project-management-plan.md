@@ -242,7 +242,7 @@ TB工单id
 - 版本、需求、工作单和人员保留面包屑与父级上下文，但指标和侧栏依对象职责呈现，不要求四类详情均展示相同风险、异常、覆盖率或变化区域；人员详情聚焦实际执行的核心专业子单、并发关注和本人最近变化，不展示独立管理信号或绩效排名；
 - 版本和需求的汇总坚持需求等权；工作单数量只表示拆解规模。
 
-本轮原型为只读、内存态的产品验证，不连接 Teambition 或钉钉，不作为正式后台代码。原型位置及三种对比方案见 `docs/prototypes/config-dashboard-prototype.html`，启动命令为 `npm run prototype:dashboard`。正式实现时应按本节确认的信息架构重新建设，而不是直接提升原型代码。
+本轮原型为只读、内存态的产品验证，不连接 Teambition 或钉钉，不作为正式后台代码。原型位置及三种对比方案见 `docs/prototypes/config-dashboard-prototype.html`，启动命令为 `node scripts/serve-product-prototype.mjs`。正式实现时应按本节确认的信息架构重新建设，而不是直接提升原型代码。
 
 ### 6.11 当前原型基线补充
 

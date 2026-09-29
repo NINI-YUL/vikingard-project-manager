@@ -61,7 +61,7 @@
 ## 原型资产与验证范围
 
 - 交互原型：`docs/prototypes/config-dashboard-prototype.html`
-- 启动命令：`npm run prototype:dashboard`
+- 启动命令：`node scripts/serve-product-prototype.mjs`
 - 方案切换：`?variant=A`、`?variant=B`、`?variant=C`，也可使用底部左右按钮或键盘方向键。
 - 已走查版本配置、需求级覆盖、状态映射、人员映射、异常视图，及版本、需求、工作单、人员下钻。
 - 原型只使用内存中的演示数据，不连接 Teambition 或钉钉，不包含持久化、鉴权、正式错误处理或后台服务。

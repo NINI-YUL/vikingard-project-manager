@@ -11,7 +11,7 @@
 ## 1. 原型资产
 
 - 原型文件：`docs/prototypes/config-dashboard-prototype.html`
-- 启动命令：`npm run prototype:dashboard`
+- 启动命令：`node scripts/serve-product-prototype.mjs`
 - 方案切换：`?variant=A`、`?variant=B`、`?variant=C`
 - 原型为只读、内存态演示，不连接 Teambition 或钉钉，不包含持久化、鉴权或正式后台服务。
 
