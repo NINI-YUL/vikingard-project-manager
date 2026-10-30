@@ -10,6 +10,6 @@ createServer((request, response) => {
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   createReadStream(prototypePath).pipe(response);
 }).listen(port, "127.0.0.1", () => {
-  console.log(`配置库与管理看板原型：http://127.0.0.1:${port}/?variant=A`);
+  console.log(`配置库与管理看板原型：http://127.0.0.1:${port}/`);
   console.log("按 Ctrl+C 停止。原型只使用内存中的演示数据。");
 });
