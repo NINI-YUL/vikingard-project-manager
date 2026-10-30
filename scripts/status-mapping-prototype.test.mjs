@@ -44,7 +44,7 @@ function p(){
     console,
   });
   vm.runInContext(code,c);
-  return {app,run:x=>vm.runInContext(x,c)};
+  return {app,elements,run:x=>vm.runInContext(x,c)};
 }
 
 test("status mapping renders seven semantics and one unified editor",()=>{
@@ -64,25 +64,90 @@ test("status mapping renders seven semantics and one unified editor",()=>{
   assert.match(code,/编辑状态映射/);
 });
 
-test("status mapping preserves unmapped rows and marks saved mappings for verification",()=>{
-  const x=p();
-  const result=x.run(`
-    const editor={values:state.statusMapping.mappings.map(item=>({...item,timing:[...item.timing]})),reason:"补充计时节点",error:""};
-    editor.values[6].semantic="";
-    editor.values[1].timing=["开发计时开始","开发计时结束"];
-    state.statusMapping.mappings=editor.values.map(item=>({...item,timing:[...item.timing]}));
-    state.statusMapping.feedback="映射已保存，等待相关数据重新同步、计算或校验恢复。";
-    ({semantic:state.statusMapping.mappings[6].semantic,id:state.statusMapping.mappings[6].id,name:state.statusMapping.mappings[6].name,feedback:state.statusMapping.feedback});
-  `);
-  assert.equal(result.semantic,"");
-  assert.equal(result.id,"status-108");
-  assert.equal(result.name,"等待联调");
-  assert.match(result.feedback,/待.*验证|重新同步|校验恢复/);
+function openEditor(x,reason="补充状态映射"){
+  x.run(`state.statusMapping.editor={values:state.statusMapping.mappings.map(item=>({...item,timing:[...item.timing]})),reason:${JSON.stringify(reason)},error:""}`);
+}
+
+test("partial save preserves source fields, pending exception and audit",()=>{
+  const x=p();openEditor(x);
+  const before=x.run('JSON.stringify(state.statusMapping.mappings.map(x=>[x.id,x.name]))');
+  assert.equal(x.run('statusMappingSave()'),true);
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"pending");
+  assert.equal(x.run('JSON.stringify(state.statusMapping.mappings.map(x=>[x.id,x.name]))'),before);
+  assert.match(x.run('cfgImpact()'),/等待联调/);
+  assert.match(x.run('cfgImpact()'),/status-108/);
+  assert.match(x.run('cfgImpact()'),/data-status-validate="success" disabled/);
+  assert.match(x.run('anomaliesV2()'),/<b>EX-101<\/b>/);
+  assert.match(x.run('state.statusMapping.recovery.events[0][3]'),/补充状态映射/);
 });
 
-test("status mapping requires a change reason before save",()=>{
+test("missing change reason cannot write mappings or recovery state",()=>{
+  const x=p();openEditor(x,"  ");
+  x.run('state.statusMapping.editor.values[6].semantic="暂停"');
+  const before=x.run('JSON.stringify(state.statusMapping)');
+  assert.equal(x.run('statusMappingSave()'),false);
+  assert.equal(x.run('state.statusMapping.mappings[6].semantic'),"");
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"unmapped");
+  assert.equal(x.run('state.statusMapping.recovery.events.length'),0);
+  assert.match(x.run('state.statusMapping.editor.error'),/变更原因/);
+});
+
+test("unmapped states block simulated success even when action is invoked directly",()=>{
+  const x=p();openEditor(x);x.run('statusMappingSave()');
+  assert.equal(x.run('statusRecoveryValidate("success")'),false);
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"failed");
+  assert.match(x.run('cfgImpact()'),/仍有 1 个状态未映射/);
+  assert.match(x.run('anomaliesV2()'),/<b>EX-101<\/b>/);
+});
+
+test("failed validation keeps exception; retry succeeds only after mapping is complete",()=>{
   const x=p();
-  assert.match(code,/变更原因/);
-  assert.match(code,/保存映射/);
-  assert.match(code,/!editor\.reason\.trim\(\)/);
+  assert.equal(x.run('statusRecoveryValidate("success")'),false);
+  openEditor(x);x.run('state.statusMapping.editor.values[6].semantic="处理中，但不计时";statusMappingSave()');
+  assert.equal(x.run('statusRecoveryValidate("failure")'),false);
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"failed");
+  assert.match(x.run('anomaliesV2()'),/<b>EX-101<\/b>/);
+  assert.equal(x.run('statusRecoveryValidate("success")'),true);
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"restored");
+  const rendered=x.run('anomaliesV2()');
+  assert.doesNotMatch(rendered,/<b>EX-101<\/b>/);
+  assert.match(rendered,/5 项演示异常/);
+  assert.match(rendered,/模拟恢复验证/);
+  assert.match(rendered,/等待联调首次出现/);
+  assert.match(x.run('cfgMapping()'),/已恢复（模拟）/);
+  assert.equal(x.run('statusRecoveryValidate("failure")'),false);
+});
+
+test("saving again invalidates a successful recovery and reopens only mapping exception",()=>{
+  const x=p();openEditor(x);
+  x.run('state.statusMapping.editor.values[6].semantic="暂停";statusMappingSave();statusRecoveryValidate("success")');
+  openEditor(x,'<script>演示原因</script>');x.run('statusMappingSave()');
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"pending");
+  assert.match(x.run('anomaliesV2()'),/<b>EX-101<\/b>/);
+  assert.match(x.run('anomaliesV2()'),/6 项演示异常/);
+  assert.match(x.run('anomaliesV2()'),/&lt;script&gt;/);
+  assert.doesNotMatch(x.run('anomaliesV2()'),/<script>演示原因/);
+  assert.equal(x.run('state.statusMapping.recovery.events.length'),3);
+});
+
+test("bound save form and validation buttons drive the shared recovery state",()=>{
+  const x=p();openEditor(x);
+  x.run('state.statusMapping.editor.values[6].semantic="暂停"');
+  const form=element(),error=element(),dialog=element();
+  dialog.querySelector=selector=>selector==="form"?form:selector==="[data-status-error]"?error:element();
+  x.elements.set("status-dialog",dialog);
+  x.run('bind()');
+  let prevented=false;
+  form.onsubmit({preventDefault(){prevented=true}});
+  assert.equal(prevented,true);
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"pending");
+  assert.equal(x.run('state.statusMapping.editor'),null);
+  x.run(`
+    globalThis.recoveryButtons=[{dataset:{statusValidate:"success"}},{dataset:{statusValidate:"failure"}}];
+    document.querySelectorAll=selector=>selector==="[data-status-validate]"?recoveryButtons:[];
+    bind();recoveryButtons[1].onclick();
+  `);
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"failed");
+  x.run('recoveryButtons[0].onclick()');
+  assert.equal(x.run('state.statusMapping.recovery.phase'),"restored");
 });
