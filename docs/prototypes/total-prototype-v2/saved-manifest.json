@@ -12,9 +12,18 @@
       "date": "2026-11-02",
       "source": "docs/previews/requirements-d-20261102",
       "scope": "Confirmed requirement D styling, timeline, direct work cards and read-only overlays"
+    },
+    {
+      "date": "2026-11-02",
+      "source": "docs/previews/action-center-revision-20261102",
+      "scope": "Confirmed personnel D styling and five action-center changes"
     }
   ],
   "files": [
+    {
+      "file": "action-revision.css",
+      "sha256": "ad9e4ccc815bfdb2820422ceedc1af751c85896f2a4890378b76aae119a27f59"
+    },
     {
       "file": "confirmation.css",
       "sha256": "0692aea6778c97364e07883425aac924e739d5b05e3a3bd8552ef0c3754d4118"
@@ -41,7 +50,7 @@
     },
     {
       "file": "index.html",
-      "sha256": "bd78b6e31f2bf65d80afd2e4b923bc5f275a6cc41dc87b31de65b3b008679028"
+      "sha256": "4c5e3cfceba06e533553cd177377557babeeec44355d3cadee2b705dcd662dfa"
     },
     {
       "file": "layout.css",
@@ -53,7 +62,7 @@
     },
     {
       "file": "light.js",
-      "sha256": "1873ab2ede2292412d522dbf75e27fac6ecec2f28240da591c0454f4cc6f8e54"
+      "sha256": "d7cfb93e89573fb7cbeff447c1073d3196f5f314bf1bb0cf65d49994275a7dd3"
     },
     {
       "file": "overdue.css",
@@ -61,11 +70,19 @@
     },
     {
       "file": "overdue.js",
-      "sha256": "e149f21d12d1a4a5fcc59aa6157c1f2e58373e47e7b6649d762790b6da4cd040"
+      "sha256": "8a7e2e00c3045eee745a29f686f143d627fd4f3f6cbfaedd1a1df9798f29dc55"
+    },
+    {
+      "file": "personnel.css",
+      "sha256": "31472a8574364046e2c056ff9906a5c6af48446f1de8dd91577d3c196dc678c1"
+    },
+    {
+      "file": "personnel.js",
+      "sha256": "cf60b848ccb00d1d261c8b996d342741309a49f2556db3d79c5467cee51a907b"
     },
     {
       "file": "README.md",
-      "sha256": "be9bc503f7cab5064f0e690f1689613fd100bb42626806c6c8f7e195f6030213"
+      "sha256": "eab3e33cb7b5fbb177c331528494dd233800b68d11e13c6ea4bbc61862d3f15a"
     },
     {
       "file": "refined.css",
@@ -94,6 +111,10 @@
     {
       "file": "spacing.js",
       "sha256": "4a373e72b51a19ef3650b8aa901b596d5c110fa5361022ed5067724ee1fe8ed3"
+    },
+    {
+      "file": "verify-personnel-action.cjs",
+      "sha256": "ac8cd392c3799369727ad958af6110ab795ab30f9cb16a45d6ab173dc68545a8"
     },
     {
       "file": "verify-requirements.cjs",

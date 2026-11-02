@@ -27,9 +27,9 @@ function compactOverdue(){
  toggle.addEventListener('click',()=>{const open=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(open));toggle.textContent=open?'收起区间':'区间示意';toggle.setAttribute('aria-label',open?'收起全部逾期区间示意':'展开全部逾期区间示意');section.querySelectorAll('.period-detail').forEach(d=>d.open=open)});
  const count=section.querySelector('#overdue-section-count');headerActions.append(toggle,count);section.querySelector(':scope>.section-head').append(headerActions);
  const empty=document.createElement('div');empty.className='overdue-compact-empty';empty.textContent='当前筛选范围内暂无逾期工单';empty.hidden=true;section.append(empty);
+ section.querySelectorAll('.overdue-interval-toggle,.overdue-period-cell').forEach(e=>e.remove());
  refreshCompact();
 }
-function refreshCompact(){const section=document.querySelector('#overdue-section');if(!section?.dataset.compactOverdue)return;const visible=[...section.querySelectorAll('[data-workitem]')].filter(e=>!e.hidden).length;section.querySelector('.overdue-compact-table').hidden=visible===0;section.querySelector('.overdue-interval-toggle').disabled=visible===0;section.querySelector('.overdue-compact-empty').hidden=visible!==0}
+function refreshCompact(){const section=document.querySelector('#overdue-section');if(!section?.dataset.compactOverdue)return;const visible=[...section.querySelectorAll('[data-workitem]')].filter(e=>!e.hidden).length;section.querySelector('.overdue-compact-table').hidden=visible===0;const toggle=section.querySelector('.overdue-interval-toggle');if(toggle)toggle.disabled=visible===0;section.querySelector('.overdue-compact-empty').hidden=visible!==0}
 const previousRender=render;render=function(){previousRender();compactOverdue()};const previousFilters=applyFilters;applyFilters=function(){previousFilters();refreshCompact()};compactOverdue();
 })();
-
