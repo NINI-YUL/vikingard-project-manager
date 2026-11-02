@@ -1,0 +1,18 @@
+/* Error module hierarchy only; no changes to the confirmation panel. */
+#data-tab #data-errors>.section-head{align-items:flex-start}
+#data-tab #data-errors .error-summary{flex:none;text-align:right;line-height:20px;color:#536078;font-size:11px}
+#data-tab #data-errors .error-summary strong{font-size:18px;font-weight:600;color:#8c591f;margin-right:3px}
+#data-tab #data-errors .error-summary small{display:block;font-size:10px;color:#737e91;margin-top:2px}
+#data-tab #data-error-count.error-source-summary{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important}
+#data-tab #data-errors .data-group-header>td{padding:11px 12px 9px;background:#fafbfd!important;border-bottom:1px solid #edf0f5}
+#data-tab #data-errors .data-group-header:not(:first-child)>td{border-top:1px solid #e7ecf3;padding-top:11px}
+#data-tab #data-errors .data-group-header b{font-size:12px;font-weight:600;color:#344054;border-left-color:#b6c6e2;vertical-align:middle}
+#data-tab #data-errors .error-group-count{display:inline-block;margin-left:8px;padding:0 6px;border-radius:4px;background:#eef1f6;color:#59677e;font-size:10px;line-height:19px;vertical-align:middle}
+#data-tab #data-errors .data-group-header .note{display:block;font-size:11px;margin:5px 0 0 11px;line-height:19px;color:#8c591f}
+#data-tab #data-errors .error-count-prefix{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#data-tab #data-errors .error-state-id{display:block;font-size:10px;line-height:18px;color:#737e91;font-weight:400;margin-top:3px}
+#data-tab #data-errors td:has(button[data-config="status"]):before{content:'本系统配置';display:block;color:#737e91;font-size:10px;line-height:17px;margin-bottom:4px;font-weight:400}
+#data-tab #data-errors .data-source-action{color:#687185;font-size:11px}
+
+@media(max-width:760px){#data-tab #data-errors .error-summary{text-align:left;font-size:10px}#data-tab #data-errors .error-summary strong{font-size:16px}#data-tab #data-errors .error-summary small{font-size:10px}#data-tab #data-errors .data-group-header>td{padding:12px 10px 10px}#data-tab #data-errors .data-group-header .note{font-size:11px}}
+

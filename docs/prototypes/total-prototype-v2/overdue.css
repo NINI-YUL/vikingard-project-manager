@@ -1,0 +1,49 @@
+/* Only the overdue module is changed. All global style comes from D. */
+#overdue-section .overdue-compact-table{width:100%;min-width:0}
+#overdue-section .overdue-compact-head,#overdue-section .overdue-item{display:grid;grid-template-columns:minmax(185px,1.5fr) 48px 78px minmax(130px,1.05fr) 36px;column-gap:12px;align-items:center}
+#overdue-section .overdue-compact-head{padding:8px 10px;background:#f7f9fc;border-radius:5px;color:var(--muted);font-size:10px;line-height:18px}
+#overdue-section .overdue-group{display:block;margin:0;padding:0;border:0}
+#overdue-section .overdue-group[hidden],#overdue-section .overdue-item[hidden],#overdue-section .overdue-compact-table[hidden],#overdue-section .overdue-compact-empty[hidden]{display:none}
+#overdue-section .overdue-items{display:block}
+#overdue-section .overdue-item{position:relative;row-gap:0;margin:0;padding:13px 10px;border:0;border-bottom:1px solid #edf0f5;border-radius:0;background:#fff;min-height:66px;font-size:12px;line-height:20px;cursor:pointer}
+#overdue-section .overdue-group:last-child .overdue-item:last-child{border-bottom:0}
+#overdue-section .overdue-item:hover{background:#fafbfe}
+#overdue-section .overdue-identity{min-width:0}
+#overdue-section .overdue-task-link{display:block;padding:0;border:0;background:none;color:#344054;text-align:left;line-height:20px;font-size:12px;cursor:pointer;max-width:100%}
+#overdue-section .overdue-task-link b{font-size:12px;font-weight:500;color:#344054;overflow-wrap:anywhere}
+#overdue-section .overdue-task-link:hover b{color:var(--blue)}
+#overdue-section .overdue-context{display:flex;gap:7px;flex-wrap:wrap;color:var(--muted);font-size:10px;line-height:17px;margin-top:3px}
+#overdue-section .overdue-context>b{font-size:10px;color:#687185;font-weight:400}
+#overdue-section .overdue-context>.note{font-size:10px;color:#687185;margin:0}
+#overdue-section .overdue-owner-cell{font-size:11px;color:#536078;white-space:nowrap}
+#overdue-section .overdue-days-cell{font-size:11px;font-weight:500;color:#a93e58;background:#fbf0f3;border-radius:5px;padding:2px 7px;width:max-content;white-space:nowrap}
+#overdue-section .overdue-reason-cell{font-size:11px;color:#536078;line-height:19px;grid-column:auto;overflow-wrap:anywhere}
+#overdue-section .overdue-period-cell{min-width:0}
+#overdue-section .period-detail{position:static;grid-column:auto;grid-row:auto}
+#overdue-section .period-detail>summary{font-size:10px;color:#60759f;white-space:nowrap;line-height:20px;min-height:24px}
+#overdue-section .period-detail>summary:after{content:'+';font-size:12px;margin-left:0}
+#overdue-section .period-detail[open]>summary:after{content:'−'}
+#overdue-section .period-detail .overdue-track{position:absolute;left:10px;right:10px;bottom:12px;margin:0;width:auto;height:23px;grid-column:auto;border-radius:5px}
+#overdue-section .overdue-item:has(.period-detail[open]){padding-bottom:48px}
+#overdue-section .overdue-compact-empty{padding:26px 16px;text-align:center;font-size:12px;color:var(--muted);border:1px dashed #e3e9f1;border-radius:6px;background:#fafbfd}
+@media(max-width:760px){
+ #overdue-section .overdue-compact-head{display:none}
+ #overdue-section .overdue-item{grid-template-columns:minmax(0,1fr) auto auto;gap:7px 10px;padding:13px 2px;min-height:0}
+ #overdue-section .overdue-identity{grid-column:1/3;grid-row:1}
+ #overdue-section .overdue-days-cell{grid-column:3;grid-row:1;align-self:start;margin-top:1px;font-size:10px}
+ #overdue-section .overdue-owner-cell{grid-column:1;grid-row:2;font-size:10px}
+ #overdue-section .overdue-owner-cell:before{content:'负责人：';color:#7a8498}
+ #overdue-section .overdue-reason-cell{grid-column:1/3!important;grid-row:3;font-size:11px}
+ #overdue-section .overdue-period-cell{grid-column:3;grid-row:2/4;align-self:end;justify-self:end}
+ #overdue-section .overdue-context{font-size:10px;gap:6px}
+ #overdue-section .period-detail .overdue-track{left:2px;right:2px}
+ #overdue-section .overdue-item:has(.period-detail[open]){padding-bottom:46px}
+}
+/* One module-level entry replaces three repeated interval links. */
+#overdue-section .overdue-compact-head,#overdue-section .overdue-item{grid-template-columns:minmax(185px,1.5fr) 48px 78px minmax(145px,1.2fr)}
+#overdue-section .overdue-period-cell{display:contents}
+#overdue-section .period-detail>summary{display:none}
+#overdue-section .overdue-header-actions{display:flex;align-items:center;gap:12px}
+#overdue-section .overdue-interval-toggle{font-size:10px;color:#60759f;min-height:24px;border-radius:4px}
+#overdue-section .overdue-interval-toggle:disabled{color:#7a8498;cursor:default;opacity:.6}
+@media(max-width:760px){#overdue-section .overdue-item{grid-template-columns:minmax(0,1fr) auto auto}#overdue-section .overdue-reason-cell{grid-column:1/-1!important}#overdue-section .overdue-header-actions{gap:8px}}

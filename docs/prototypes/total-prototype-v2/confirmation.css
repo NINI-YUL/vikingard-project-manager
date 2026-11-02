@@ -1,0 +1,20 @@
+/* Emphasize pending human decisions while keeping the D visual system. */
+#data-tab .confirmation-taskbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 18px;margin-bottom:18px;border:1px solid #dce5f6;border-radius:10px;background:#f4f7fe}
+#data-tab .confirmation-taskbar .taskbar-copy{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 18px;min-width:0}
+#data-tab .confirmation-taskbar .taskbar-title{font-size:14px;font-weight:600;color:#344d86;line-height:24px}
+#data-tab .confirmation-taskbar .taskbar-title strong{font-size:20px;font-weight:600;margin-right:5px;font-variant-numeric:tabular-nums}
+#data-tab .confirmation-taskbar .taskbar-secondary{font-size:11px;color:#687185;line-height:20px}
+#data-tab .confirmation-taskbar .taskbar-jump{flex:none;min-height:34px;padding:6px 13px;font-size:11px;line-height:20px;font-weight:600;border-radius:7px;color:#fff;background:var(--ca-primary-gradient);border:1px solid var(--ca-primary-border);cursor:pointer}
+#data-tab .confirmation-taskbar .taskbar-jump:hover{background:var(--ca-primary-gradient-hover)}
+#data-tab .confirmation-taskbar .taskbar-jump:disabled{background:#edf1f7;color:#687185;border-color:#dfe5ee;cursor:default}
+#data-tab #confirmations.has-confirmations{border-color:#cddbf3}
+#data-tab #confirmations.has-confirmations>.section-head{background:#f4f7fe;border-bottom:1px solid #e2eaf7;border-radius:9px 9px 0 0;padding:15px 18px;margin:-18px -18px 15px}
+#data-tab #confirmations.has-confirmations .section-title{color:#344d86}
+#data-tab #confirmations.has-confirmations #confirmation-count{color:#8c591f;background:#fff4df;border:1px solid #f2e4c7;font-size:11px;font-weight:500}
+#data-tab #confirmations.has-confirmations .decision-proposal{background:#f5f8ff;color:#34549d;font-size:12px;font-weight:600}
+#data-tab #confirmations.has-confirmations .link[data-config]{background:#eef3ff;border-color:#c8d6f2;color:#34549d;font-weight:600;min-height:34px}
+#data-tab #confirmations.has-confirmations .link[data-config]:hover{background:#e2ebff;border-color:#aabfe9}
+#data-tab #confirmations .decision-proposal{vertical-align:middle}
+#data-tab #confirmations:focus{outline:2px solid #9bb1dc;outline-offset:3px}
+#data-tab #confirmations{scroll-margin-top:20px}
+@media(max-width:760px){#data-tab .confirmation-taskbar{padding:12px;gap:10px;align-items:center}#data-tab .confirmation-taskbar .taskbar-copy{display:block}#data-tab .confirmation-taskbar .taskbar-title{font-size:12px;line-height:22px;display:block}#data-tab .confirmation-taskbar .taskbar-title strong{font-size:18px}#data-tab .confirmation-taskbar .taskbar-secondary{display:block;font-size:10px;line-height:18px;margin-top:3px}#data-tab .confirmation-taskbar .taskbar-jump{padding:6px 9px;font-size:10px}#data-tab #confirmations.has-confirmations>.section-head{padding:13px 12px;margin:-14px -12px 12px}#data-tab #confirmations.has-confirmations .link[data-config]{min-height:36px}}

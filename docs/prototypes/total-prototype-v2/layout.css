@@ -1,0 +1,2 @@
+/* Keep D components, content order, 18px gaps and restored risk spacing. */
+@media(min-width:1201px){.shell .action-columns{grid-template-columns:minmax(0,65fr) minmax(0,35fr)}}

@@ -1,0 +1,1 @@
+(()=>{function refine(){document.querySelectorAll('#risk-section .risk').forEach(card=>{const button=card.querySelector('.light-actions>.light-object');const head=card.querySelector(':scope>.section-head');if(button&&head)head.append(button)})}const priorRender=render;render=function(){priorRender();refine()};refine()})();

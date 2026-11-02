@@ -1,0 +1,118 @@
+{
+  "savedDate": "2026-11-01",
+  "updatedDate": "2026-11-02",
+  "source": "docs/previews/action-center-data-20261031",
+  "updates": [
+    {
+      "date": "2026-11-02",
+      "source": "docs/previews/versions-d-20261102",
+      "scope": "Confirmed version-page D styling, 65:35 layout and bottom ABC control removal"
+    }
+  ],
+  "files": [
+    {
+      "file": "confirmation.css",
+      "sha256": "0692aea6778c97364e07883425aac924e739d5b05e3a3bd8552ef0c3754d4118"
+    },
+    {
+      "file": "confirmation.js",
+      "sha256": "fadf9ee931ce24c6c4f08fed29833a6ff97f4430e3faf55531d92de2885d809f"
+    },
+    {
+      "file": "data.css",
+      "sha256": "c5ba584a2d8fbe25cceaad5ef660dd3edd6b50d5056eb9a70df684044dbd2916"
+    },
+    {
+      "file": "data.js",
+      "sha256": "f29bf3d2a906a76c64fc245aac07e2b2361837a4d7469f46e82d38d06b11c9c8"
+    },
+    {
+      "file": "errors.css",
+      "sha256": "cfabe2ea2175fe0973851a62e4861ddb5ff3a106d41fe76a5bbac2e1426d4b67"
+    },
+    {
+      "file": "errors.js",
+      "sha256": "cbf3d1f5ea6e2f574fbccf37e179313b3a51e93a42e9bf0ffba79551d53874ef"
+    },
+    {
+      "file": "index.html",
+      "sha256": "49f8550567b8fe002066fea615e65e9994a9eef5c27ec6aad117ebe632768777"
+    },
+    {
+      "file": "layout.css",
+      "sha256": "3cfe20520226a19dff91fdfe8f64dde8f447b7d1a3a3ace9cd53e5f37f6854ab"
+    },
+    {
+      "file": "light.css",
+      "sha256": "4ee034ed6a6f142742e04471d07e3c3234f7b995ca6c5d1ca3f7defd0ce55df3"
+    },
+    {
+      "file": "light.js",
+      "sha256": "1873ab2ede2292412d522dbf75e27fac6ecec2f28240da591c0454f4cc6f8e54"
+    },
+    {
+      "file": "overdue.css",
+      "sha256": "674942984dce5ae9f7056092fd568ac25784d924dea1449b5a89599352497e1d"
+    },
+    {
+      "file": "overdue.js",
+      "sha256": "e149f21d12d1a4a5fcc59aa6157c1f2e58373e47e7b6649d762790b6da4cd040"
+    },
+    {
+      "file": "README.md",
+      "sha256": "09362d3ec3b59d1167316a5c2a79a7a5329f4fd641be34c945f11f47dac6e72d"
+    },
+    {
+      "file": "refined.css",
+      "sha256": "9035b1c317a25941c1d848e8817a50c0dbe907270654b2152ae0d48d0a5f1a6d"
+    },
+    {
+      "file": "sample.css",
+      "sha256": "eb0df13efa8a276494e4517f2c2dcdc14acff1e93196c97e198e85336034d7d9"
+    },
+    {
+      "file": "serve.cjs",
+      "sha256": "e452d070dbfb6fcb3eed83ba9313b4e09872e6c3a740ce6905be2aeb89036b42"
+    },
+    {
+      "file": "spacing.css",
+      "sha256": "cfa77d953110764562df137829a28071e3fa6e203c516cae1e0e5c1e40661803"
+    },
+    {
+      "file": "spacing.js",
+      "sha256": "4a373e72b51a19ef3650b8aa901b596d5c110fa5361022ed5067724ee1fe8ed3"
+    },
+    {
+      "file": "verify-versions.cjs",
+      "sha256": "1282ea139aac1bccca6f09e30630aaa25f4274f8dae1e35c82c58d4016b00552"
+    },
+    {
+      "file": "versions.css",
+      "sha256": "5422948d89d6e076515584118c7d8e1e9dcfe34e8a8af0142a9d7dc24006faab"
+    },
+    {
+      "file": "versions.js",
+      "sha256": "439bd3c393e7868a57a29e29dceb54d744de64406c2b5ce2f52eface8348d6ae"
+    },
+    {
+      "file": "assets/calm-admin-tokens.css",
+      "sha256": "ad53761dd7ee0520124d316d3cc80fe388c75aeca4bf8201edb29c51935424e6"
+    },
+    {
+      "file": "assets/jakarta-400.ttf",
+      "sha256": "076831b98043f50f829b6c91db3be4a844641f1c95bccff5c886ed87c661a852"
+    },
+    {
+      "file": "assets/jakarta-500.ttf",
+      "sha256": "b4fc14ec283d54236fd302cdb92546f98ae0ff061ca5ee23453a02bdf4628791"
+    },
+    {
+      "file": "assets/jakarta-600.ttf",
+      "sha256": "50357df108c5d297ec4ece76aeddf49561f3794f67af077cfc2c711b7a75b439"
+    },
+    {
+      "file": "assets/jakarta-700.ttf",
+      "sha256": "32971ad7976930539a11c79ce91ce84092df7f25c5be716b594601842f10a7ae"
+    }
+  ]
+}

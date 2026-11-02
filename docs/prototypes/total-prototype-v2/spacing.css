@@ -1,0 +1,14 @@
+/* Spacing refinement only; keep module gaps, fonts and global D tokens. */
+#risk-section .risk{padding:10px 12px;margin-top:10px!important}
+#risk-section .risk+.risk{padding-top:10px}
+#risk-section .risk>.section-head{align-items:flex-start;margin-bottom:3px;gap:12px}
+#risk-section .risk>.section-head>.light-object{flex:none;min-height:22px;line-height:22px;white-space:nowrap;margin:0;padding:0}
+#risk-section .risk-meta{margin-top:3px;line-height:1.6}
+#risk-section .risk-brief{margin:5px 0 10px;line-height:1.7}
+#risk-section .light-actions{display:block}
+#risk-section .risk-disclosure>summary{min-height:24px;line-height:20px}
+#risk-section .risk-disclosure table{margin-top:8px}
+#overdue-section .overdue-item{padding-top:9px;padding-bottom:9px;min-height:58px}
+#overdue-section .overdue-item:has(.period-detail[open]){padding-bottom:44px}
+@media(max-width:760px){#risk-section .risk{padding:10px;margin-top:9px!important}#risk-section .risk>.section-head{flex-wrap:nowrap;gap:8px}#risk-section .risk>.section-head>div{min-width:0}#risk-section .risk>.section-head>.light-object{font-size:10px}#risk-section .risk-meta{line-height:1.8}#overdue-section .overdue-item{padding-top:11px;padding-bottom:11px;min-height:0}#overdue-section .overdue-item:has(.period-detail[open]){padding-bottom:44px}}
+
