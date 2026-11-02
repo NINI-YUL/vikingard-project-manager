@@ -7,6 +7,11 @@
       "date": "2026-11-02",
       "source": "docs/previews/versions-d-20261102",
       "scope": "Confirmed version-page D styling, 65:35 layout and bottom ABC control removal"
+    },
+    {
+      "date": "2026-11-02",
+      "source": "docs/previews/requirements-d-20261102",
+      "scope": "Confirmed requirement D styling, timeline, direct work cards and read-only overlays"
     }
   ],
   "files": [
@@ -36,7 +41,7 @@
     },
     {
       "file": "index.html",
-      "sha256": "49f8550567b8fe002066fea615e65e9994a9eef5c27ec6aad117ebe632768777"
+      "sha256": "bd78b6e31f2bf65d80afd2e4b923bc5f275a6cc41dc87b31de65b3b008679028"
     },
     {
       "file": "layout.css",
@@ -60,11 +65,19 @@
     },
     {
       "file": "README.md",
-      "sha256": "09362d3ec3b59d1167316a5c2a79a7a5329f4fd641be34c945f11f47dac6e72d"
+      "sha256": "be9bc503f7cab5064f0e690f1689613fd100bb42626806c6c8f7e195f6030213"
     },
     {
       "file": "refined.css",
       "sha256": "9035b1c317a25941c1d848e8817a50c0dbe907270654b2152ae0d48d0a5f1a6d"
+    },
+    {
+      "file": "requirements.css",
+      "sha256": "ec767e730f74c1e02cd2500a2a2455a84d4e00b528b3e485a5420cc34a6b6a25"
+    },
+    {
+      "file": "requirements.js",
+      "sha256": "8e1b296921acf64b0be5e0caf05315686ddb011969098d19662e6f9d399679de"
     },
     {
       "file": "sample.css",
@@ -81,6 +94,10 @@
     {
       "file": "spacing.js",
       "sha256": "4a373e72b51a19ef3650b8aa901b596d5c110fa5361022ed5067724ee1fe8ed3"
+    },
+    {
+      "file": "verify-requirements.cjs",
+      "sha256": "17c2197d5e9751ea57e3c465ec11a24af06272d599eb4f04df750514cecef180"
     },
     {
       "file": "verify-versions.cjs",
