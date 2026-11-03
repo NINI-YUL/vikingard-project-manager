@@ -17,6 +17,16 @@
       "date": "2026-11-02",
       "source": "docs/previews/action-center-revision-20261102",
       "scope": "Confirmed personnel D styling and five action-center changes"
+    },
+    {
+      "date": "2026-11-02",
+      "source": "docs/previews/config-aligned-d-20261102",
+      "scope": "Confirmed latest-v1 configuration functionality and D style, rule inheritance, per-page saving, status mapping/recovery, PM recipients and work-item actual-time correction; local only, no commit or push"
+    },
+    {
+      "date": "2026-11-02",
+      "source": "docs/previews/participation-d-20261102; docs/previews/history-d-20261102",
+      "scope": "Confirmed final participation annual pastel palette and original monthly palette; history three-level D styling and iframe height fix; retain synchronized configuration functionality"
     }
   ],
   "files": [
@@ -50,7 +60,7 @@
     },
     {
       "file": "index.html",
-      "sha256": "4c5e3cfceba06e533553cd177377557babeeec44355d3cadee2b705dcd662dfa"
+      "sha256": "bf0209182b0cdaaed5ef4e01e0c71cf7d41fa50e9dd455553760f10c67f72515"
     },
     {
       "file": "layout.css",
@@ -82,7 +92,7 @@
     },
     {
       "file": "README.md",
-      "sha256": "eab3e33cb7b5fbb177c331528494dd233800b68d11e13c6ea4bbc61862d3f15a"
+      "sha256": "9566546530a1967874e6c9ca36e5ccfdfba44fada8ba5862476d306e81cdcaca"
     },
     {
       "file": "refined.css",
@@ -151,6 +161,38 @@
     {
       "file": "assets/jakarta-700.ttf",
       "sha256": "32971ad7976930539a11c79ce91ce84092df7f25c5be716b594601842f10a7ae"
+    },
+    {
+      "file": "config.css",
+      "sha256": "0ba0e6e040b7f594c4d5da8596413ac3e9c4484cf0dd61f1a00b96fd1bbd9d74"
+    },
+    {
+      "file": "config.js",
+      "sha256": "e2d8c5aeda2c4a4c2dc576567a0ee4db23acd2f810b8f153c3f60d8f7ad33c50"
+    },
+    {
+      "file": "aligned.css",
+      "sha256": "cad0d67e45d420ccd4037cc8e3fea751d1e030ebbd4c902151bfdd2bfd939252"
+    },
+    {
+      "file": "rules-config-prototype.test.mjs",
+      "sha256": "b8a5122ba09d6a1113188e405c0c5d4c2a7dc1e045edc22cf87b6667d8a82865"
+    },
+    {
+      "file": "status-mapping-prototype.test.mjs",
+      "sha256": "7aac9dc9cba1f4860d98e653559a8b9f39b194c6ee6876143cea6dcdb8c2a868"
+    },
+    {
+      "file": "workitem-time-prototype.test.mjs",
+      "sha256": "dce62e19abfa673665ba3106822f2c074888d9d09c6b1541fc5939ca12b92850"
+    },
+    {
+      "file": "verify-config.cjs",
+      "sha256": "67f70d8cc1bf1e7f38b198020436e155ac065ffd61b2dba45ddfa508ca9b0f1c"
+    },
+    {
+      "file": "verify-participation-history.cjs",
+      "sha256": "a7084b944a71103968583d950b08e95cfd74a25aba9859c6a86e3b489d8c0004"
     }
   ]
 }

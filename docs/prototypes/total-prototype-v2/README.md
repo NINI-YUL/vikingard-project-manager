@@ -19,3 +19,9 @@
 2026-11-02：已同步确认的需求页 D 版样式，包括总览、按日时间线、其他直属工作单及对应浮层。默认仍为行动中心，通过左侧需求入口或版本页需求名称进入。复核命令：`node docs/prototypes/total-prototype-v2/verify-requirements.cjs`，需要 Playwright 与 Chrome；可通过 `CHROME_PATH` 指定浏览器。
 
 2026-11-02：已同步确认的人员页 D 版，以及行动中心标题、风险明细默认展开、移除逾期区间示意、逾期天数紫底白字和风险工单执行人名称。查看完整历史保留现有演示边界。验证：`node docs/prototypes/total-prototype-v2/verify-personnel-action.cjs`。
+
+2026-11-02：已同步确认的配置库功能对齐与 D 版样式，包括规则继承编辑、状态映射与恢复验证、PM 通知规则及实际时间修正等必要联动。配置库采用各页编辑窗口保存，取消旧通用草稿发布。默认首页不变；配置库 `?page=config`，规则 `?page=rules`，工作单 `?page=workitem`。人力参与度和历史查询独立视觉预览未合入。
+
+配置库浏览器验证：`node docs/prototypes/total-prototype-v2/verify-config.cjs`。功能验证：`node --test docs/prototypes/total-prototype-v2/rules-config-prototype.test.mjs docs/prototypes/total-prototype-v2/status-mapping-prototype.test.mjs docs/prototypes/total-prototype-v2/workitem-time-prototype.test.mjs`。本次不提交、不推送。
+
+2026-11-02：已同步人力参与度与历史查询的最终 D 版预览。参与度年度使用最终浅蓝/浅紫/浅灰色带，月度保持第一版；历史查询保留版本—需求三层下钻及全部字段。参与度 `?page=participation`，历史 `?page=history`；复核：`node docs/prototypes/total-prototype-v2/verify-participation-history.cjs`。本次已获提交和推送授权，包含前次确认的配置库补齐。
