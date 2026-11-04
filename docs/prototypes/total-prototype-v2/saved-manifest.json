@@ -36,6 +36,11 @@
     {
       "date": "2026-11-04",
       "scope": "Remove decorative 1/2/3 prefixes from Action Center risk, overdue and upcoming section headings; counts and functions retained"
+    },
+    {
+      "date": "2026-11-04",
+      "source": "action-data-audit-20261104",
+      "scope": "Confirmed AC-08 summary and EX-01/EX-02 shared issues, deduplicated work-item counts, details, filters and status-recovery audit; retain formal default/navigation; local sync only"
     }
   ],
   "files": [
@@ -69,7 +74,7 @@
     },
     {
       "file": "index.html",
-      "sha256": "2fd27e8d69e90c4aebabfb293f555b5448bf6ec7b51652ee84149e84f5b6afa2"
+      "sha256": "90a541f38e586ed528dc6448bfd2da145cfb53aff0c68e1087dcd89b109b6188"
     },
     {
       "file": "layout.css",
@@ -101,7 +106,7 @@
     },
     {
       "file": "README.md",
-      "sha256": "2bc90cd2c470b1f22afebfdffb3c135eb9be0cab44d89017c6cecb63d212b1ea"
+      "sha256": "a6a5422284ae93ef08cfb5b0a7262cafdad3469a4a5d06ec528fc73a147e2324"
     },
     {
       "file": "refined.css",
@@ -246,6 +251,18 @@
     {
       "file": "verify-config-style.cjs",
       "sha256": "3b5dbcba6efa172a68c4b867b7cbac5cd1392847d9fc689e137d79f76c8db5bb"
+    },
+    {
+      "file": "action-data-audit.css",
+      "sha256": "c3012d6ad2313841db2748a04d45b1cf510bc501c84e90ef29318617b8f33e42"
+    },
+    {
+      "file": "action-data-audit.js",
+      "sha256": "3763ac6cc9f6801564487dc36760e47310def7fbd23b046d6879d457ce505073"
+    },
+    {
+      "file": "verify-action-data-audit.cjs",
+      "sha256": "3edcffc19e7d7dd50b1a5ef51985041428d14d77e3278574299d9311468045a4"
     }
   ]
 }
