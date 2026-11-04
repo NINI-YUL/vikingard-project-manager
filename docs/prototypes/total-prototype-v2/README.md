@@ -29,3 +29,5 @@
 2026-11-04：已同步确认的三组配置库最终视觉与文案（版本与规则、状态语义、人员与通知），保留全部原业务校验与其他页面。规则 `?page=rules`；恢复 `?page=config&statusTab=impact`；人员 `?page=config&peopleTab=people`；通知 `?page=config&peopleTab=notice`。新增复核：`verify-config-style.cjs`、`verify-rules-editor.cjs`、`verify-rules-feedback.cjs`，均可在本目录直接随 index.html 运行。
 
 2026-11-04：已同步 action-data-audit-20261104 确认预览。数据待处理展示摘要，异常与审计统一事项、处理和记录；按异常编号计数，工单去重。状态映射保存后待验证，模拟恢复成功后两页同步移出，审计保留。保留正式名称、默认风险与到期首页及完整导航，不含预览横幅。直达数据页 `?variant=A&actionTab=data`；复核 `node docs/prototypes/total-prototype-v2/verify-action-data-audit.cjs`。仅本地同步，未提交、未推送。
+
+2026-11-04：已同步 table-headers-d-20261104 最终确认预览。风险关注与异常/审计表头沿用 D 版浅灰蓝背景、字体、行高、内边距、分隔线和 5px 端部圆角。风险表格使用分离边框；桌面宽度不低于 1100px 时适应卡片内容区，避免最小宽度裁掉右侧圆角，窄屏保留横向滚动。全部字段、数量、展开及处理入口保持不变；不包含预览横幅。

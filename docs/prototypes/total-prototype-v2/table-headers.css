@@ -1,0 +1,27 @@
+/* Reuse D-style detail-table header values; scoped to the two requested modules. */
+.shell #risk-section table th,
+.shell .da-audit table th {
+  background: #f7f9fc;
+  color: #687185;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 9px 8px;
+  border-bottom: 1px solid #e9edf4;
+  text-align: left;
+  white-space: normal;
+}
+.shell #risk-section table th:first-child,
+.shell .da-audit table th:first-child { border-radius: 5px 0 0 5px; }
+.shell #risk-section table th:last-child,
+.shell .da-audit table th:last-child { border-radius: 0 5px 5px 0; }
+
+/* Separate cell borders so both top and bottom header corners render correctly. */
+.shell #risk-section table { border-collapse: separate; border-spacing: 0; }
+
+/* At desktop widths, keep the last header cell inside the visible disclosure. */
+@media (min-width: 1100px) {
+  .shell #risk-section .risk-disclosure table { min-width: 0; width: 100%; }
+  .shell #risk-section .risk-disclosure th,
+  .shell #risk-section .risk-disclosure td { overflow-wrap: anywhere; }
+}
