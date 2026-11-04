@@ -32,6 +32,10 @@
       "date": "2026-11-04",
       "source": "version-rules-d-20261103; status-semantics-d-20261103; people-notices-d-20261104",
       "scope": "User-confirmed final configuration styling, rule/editor concise copy and feedback, recovery grouping, people/notices; no preview auto-routing"
+    },
+    {
+      "date": "2026-11-04",
+      "scope": "Remove decorative 1/2/3 prefixes from Action Center risk, overdue and upcoming section headings; counts and functions retained"
     }
   ],
   "files": [
@@ -65,7 +69,7 @@
     },
     {
       "file": "index.html",
-      "sha256": "495282e2e7fa94327fcb51671931c5e1342cc1bc51e86b8c6f6b0b81c9edab53"
+      "sha256": "2fd27e8d69e90c4aebabfb293f555b5448bf6ec7b51652ee84149e84f5b6afa2"
     },
     {
       "file": "layout.css",
