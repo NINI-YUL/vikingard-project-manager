@@ -1,6 +1,6 @@
 {
   "savedDate": "2026-11-01",
-  "updatedDate": "2026-11-02",
+  "updatedDate": "2026-11-04",
   "source": "docs/previews/action-center-data-20261031",
   "updates": [
     {
@@ -27,6 +27,11 @@
       "date": "2026-11-02",
       "source": "docs/previews/participation-d-20261102; docs/previews/history-d-20261102",
       "scope": "Confirmed final participation annual pastel palette and original monthly palette; history three-level D styling and iframe height fix; retain synchronized configuration functionality"
+    },
+    {
+      "date": "2026-11-04",
+      "source": "version-rules-d-20261103; status-semantics-d-20261103; people-notices-d-20261104",
+      "scope": "User-confirmed final configuration styling, rule/editor concise copy and feedback, recovery grouping, people/notices; no preview auto-routing"
     }
   ],
   "files": [
@@ -60,7 +65,7 @@
     },
     {
       "file": "index.html",
-      "sha256": "bf0209182b0cdaaed5ef4e01e0c71cf7d41fa50e9dd455553760f10c67f72515"
+      "sha256": "495282e2e7fa94327fcb51671931c5e1342cc1bc51e86b8c6f6b0b81c9edab53"
     },
     {
       "file": "layout.css",
@@ -92,7 +97,7 @@
     },
     {
       "file": "README.md",
-      "sha256": "9566546530a1967874e6c9ca36e5ccfdfba44fada8ba5862476d306e81cdcaca"
+      "sha256": "2bc90cd2c470b1f22afebfdffb3c135eb9be0cab44d89017c6cecb63d212b1ea"
     },
     {
       "file": "refined.css",
@@ -193,6 +198,50 @@
     {
       "file": "verify-participation-history.cjs",
       "sha256": "a7084b944a71103968583d950b08e95cfd74a25aba9859c6a86e3b489d8c0004"
+    },
+    {
+      "file": "version-rules.css",
+      "sha256": "97044b5a49e1e47709454291d037ff871085ea5b5cac28508f57f764f0f085d8"
+    },
+    {
+      "file": "version-rules.js",
+      "sha256": "82f0e0299204ce857858902cd11fd9600dca6d8c8039753ad95cc0805e297ab3"
+    },
+    {
+      "file": "rules-editor.css",
+      "sha256": "ca4715ec18b45810331f8585f13a0b47b6d768bb848f093f9ef791e692ad852f"
+    },
+    {
+      "file": "rules-editor.js",
+      "sha256": "25b8593f1af6c75e026e6a4023780ee3386c19b967cebb3c358fd35da46ebc42"
+    },
+    {
+      "file": "status.css",
+      "sha256": "4b19636b910d33af2b5f5197f6e256fb40c7a07ee7322d7de50af1fb8330d18a"
+    },
+    {
+      "file": "status.js",
+      "sha256": "e3f7aafe987dfb46722e5b55e034a6c2ed455808ead09602c551ec0d14c3c4b9"
+    },
+    {
+      "file": "people-notices.css",
+      "sha256": "746561efabf38badfc989f299e7da428a27d8e32b6d28528025f37fafa068efe"
+    },
+    {
+      "file": "people-notices.js",
+      "sha256": "d2f875f07076d35e5a296ead37ffe455cf99bd2864797b475dea4ef8f92021ff"
+    },
+    {
+      "file": "verify-rules-editor.cjs",
+      "sha256": "ae8da8f926af851a7b42f96e5121ae6148329450a5e50a753adf863a43b091c3"
+    },
+    {
+      "file": "verify-rules-feedback.cjs",
+      "sha256": "06c9868d50bae7eba693e4f73fe607df2d750f15ea5b0cbe03a9ee846b7dffe5"
+    },
+    {
+      "file": "verify-config-style.cjs",
+      "sha256": "3b5dbcba6efa172a68c4b867b7cbac5cd1392847d9fc689e137d79f76c8db5bb"
     }
   ]
 }

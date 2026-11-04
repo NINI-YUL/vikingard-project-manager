@@ -25,3 +25,5 @@
 配置库浏览器验证：`node docs/prototypes/total-prototype-v2/verify-config.cjs`。功能验证：`node --test docs/prototypes/total-prototype-v2/rules-config-prototype.test.mjs docs/prototypes/total-prototype-v2/status-mapping-prototype.test.mjs docs/prototypes/total-prototype-v2/workitem-time-prototype.test.mjs`。本次不提交、不推送。
 
 2026-11-02：已同步人力参与度与历史查询的最终 D 版预览。参与度年度使用最终浅蓝/浅紫/浅灰色带，月度保持第一版；历史查询保留版本—需求三层下钻及全部字段。参与度 `?page=participation`，历史 `?page=history`；复核：`node docs/prototypes/total-prototype-v2/verify-participation-history.cjs`。本次已获提交和推送授权，包含前次确认的配置库补齐。
+
+2026-11-04：已同步确认的三组配置库最终视觉与文案（版本与规则、状态语义、人员与通知），保留全部原业务校验与其他页面。规则 `?page=rules`；恢复 `?page=config&statusTab=impact`；人员 `?page=config&peopleTab=people`；通知 `?page=config&peopleTab=notice`。新增复核：`verify-config-style.cjs`、`verify-rules-editor.cjs`、`verify-rules-feedback.cjs`，均可在本目录直接随 index.html 运行。
