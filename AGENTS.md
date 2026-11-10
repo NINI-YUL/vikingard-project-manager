@@ -21,3 +21,7 @@ Use the five default mattpocock/skills triage labels. See `docs/agents/triage-la
 ### Domain docs
 
 Use the single-context domain documentation layout. See `docs/agents/domain.md`.
+
+## 凭证安全
+
+读取凭证、执行鉴权、处理授权回调或排查相关异常前，必须阅读 `docs/security/credential-handling.md`。先确认函数参数约定；不得输出凭证内容、完整异常或未筛选的鉴权响应。
