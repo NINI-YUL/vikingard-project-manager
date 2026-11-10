@@ -1,0 +1,21 @@
+{
+  "mode": "local_controlled_test",
+  "taskNumber": "vkt-64",
+  "taskTitle": "【客户端】1",
+  "currentCollectionId": "TEST-a061c785-2690-4a86-92b4-9bdd3cce1c3d",
+  "registeredAt": "2026-11-09T09:00:45.282Z",
+  "rounds": [
+    {
+      "collectionId": "TEST-dfd65482-b358-449f-b540-c45b395e3728",
+      "state": "closed"
+    },
+    {
+      "collectionId": "TEST-a061c785-2690-4a86-92b4-9bdd3cce1c3d",
+      "state": "open"
+    }
+  ],
+  "formalServiceImplemented": false,
+  "superseded": true,
+  "selectionPolicy": "latest_valid_submission_per_task",
+  "note": "历史受控轮次清单；open/closed 不再参与反馈有效性判定。"
+}
