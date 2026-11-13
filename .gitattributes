@@ -1,0 +1,2 @@
+# Preserve applied migration bytes across checkouts; checksums must not drift.
+migrations/*.sql -text

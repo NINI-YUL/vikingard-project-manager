@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>VikingPM · 登录与权限验收</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body><main>
+<header><p class="eyebrow">VikingPM · 第一版开发</p><h1>登录与权限验收</h1><p>本入口仅验收 P01–P02。总原型 v2 仍是首版目标，业务页面尚未接入。</p></header>
+<p id="message" role="status" aria-live="polite">正在检查服务状态…</p>
+<section id="login" hidden><h2>使用钉钉确认身份</h2><p>仅已核对企业身份并明确授权的人员可访问。首个登录者不会自动成为所有者。</p><a class="button" href="/auth/dingtalk/start">钉钉登录</a></section>
+<section id="account" hidden><h2>当前身份</h2><p id="identity"></p><button id="logout">退出登录</button><button id="write-check">检查写入权限（不保存数据）</button></section>
+<section id="management" hidden><h2>后台权限</h2><p>修改权限会立即撤销该人员旧会话。每次修改须填写原因；最后一名有效所有者不能降级或停用。</p><div class="table-wrap"><table><thead><tr><th>人员</th><th>权限</th><th>身份状态</th><th>操作</th></tr></thead><tbody id="people"></tbody></table></div>
+<form id="add-person"><h3>登记已核实身份</h3><label>显示姓名<input name="displayName" required maxlength="100"></label><label>已核实的钉钉 Union ID<input name="unionId" required maxlength="200" autocomplete="off"></label><label>登记依据<input name="reason" required maxlength="500"></label><label><input name="confirmed" type="checkbox" required>我已核对当前企业及该人员的可信身份</label><button>登记为无后台权限</button></form></section>
+<section id="audit-section" hidden><h2>最近权限审计</h2><button id="refresh-audit">刷新审计</button><pre id="audit"></pre></section>
+<footer>不接入正式 TB，不发送通知。本批未进行 P08/P12 资源验收。</footer>
+</main></body></html>

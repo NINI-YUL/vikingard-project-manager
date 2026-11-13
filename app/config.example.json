@@ -1,0 +1,17 @@
+{
+  "host": "127.0.0.1",
+  "port": 4310,
+  "origin": "http://127.0.0.1:4310",
+  "loginEnabled": false,
+  "dingtalk": {
+    "corpId": "",
+    "envPath": "C:/Users/Administrator/AppData/Local/VikingPM/dingtalk.env"
+  },
+  "database": {
+    "host": "127.0.0.1",
+    "port": 55432,
+    "database": "vikingpm",
+    "user": "vikingpm_app",
+    "password": "EXAMPLE_ONLY_NOT_A_REAL_PASSWORD"
+  }
+}
