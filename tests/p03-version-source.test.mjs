@@ -51,7 +51,7 @@ test('P03 PostgreSQL: enrollment, sync and source failure preserve existing fact
 test('P03 Teambition reader paginates, filters exact sprint and preserves source IDs', async () => {
   const calls = [];
   const read = createTeambitionSourceReader({
-    projectId:'project-1', versionId:'version-1', fieldMap:{category:'cf-category',function:'cf-function'},
+    projectId:'project-1', versionId:'version-1', fieldMap:{category:'cf-category',function:'cf-function',typeNames:{'type-3':'任务'}},
     listTasks: async args => {
       calls.push(args);
       return calls.length === 1 ? {result:[
@@ -67,7 +67,8 @@ test('P03 Teambition reader paginates, filters exact sprint and preserves source
   assert.equal(calls[1].pageToken,'next');
   assert.deepEqual(snapshot.items.map(item => item.sourceTaskId),['task-1','task-3']);
   assert.equal(snapshot.items[0].category,'分类A');
-  assert.deepEqual(snapshot.items[1].structureIssues,['unknown_task_type','unknown_status']);
+  assert.deepEqual(snapshot.items[1].structureIssues,['unknown_status']);
+  assert.equal(snapshot.items[1].typeName,'任务');
 });
 
 test('P03 Teambition task mapping keeps unknown fields explicit', () => {

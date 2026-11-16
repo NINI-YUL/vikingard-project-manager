@@ -85,14 +85,14 @@ export function mapTeambitionTask(task, fieldMap = {}) {
     visibleKey: task?.uniqueId == null ? null : String(task.uniqueId),
     title: task?.content,
     typeId: task?.sfcId,
-    typeName: task?.sfcName,
+    typeName: task?.sfcName ?? fieldMap.typeNames?.[task?.sfcId] ?? null,
     category: fieldValue(task, fieldMap.category),
     functionName: fieldValue(task, fieldMap.function),
     parentSourceTaskId: task?.parentTaskId,
     status: task?.tfsName ?? task?.tfsId,
     sourceUpdatedAt: task?.updated,
     structureIssues: [
-      ...(task?.sfcId && !task?.sfcName ? ['unknown_task_type'] : []),
+      ...(task?.sfcId && !(task?.sfcName ?? fieldMap.typeNames?.[task?.sfcId]) ? ['unknown_task_type'] : []),
       ...(task?.tfsId && !task?.tfsName ? ['unknown_status'] : []),
       ...(!Array.isArray(task?.customfields) ? ['customfields_missing'] : [])
     ],
