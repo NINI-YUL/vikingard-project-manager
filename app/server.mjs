@@ -3,6 +3,7 @@ import { createServer as httpsServer } from 'node:https';
 import { readFileSync } from 'node:fs';
 import { Denied, requireRole, authenticate, logout, listPeople, changePerson, createIdentity } from './security.mjs';
 import { beginLogin, completeLogin } from './dingtalk.mjs';
+import { enrollVersion, syncVersion } from './version-source.mjs';
 
 const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
 function cookies(req) {
@@ -59,7 +60,22 @@ export function createApplication(pool,config,{ loginResolver } = {}) {
         if (req.headers.origin !== config.origin || req.headers['x-csrf-token'] !== actor.csrf) throw new Denied(403,'请求来源或会话校验失败');
       }
       if (req.method === 'GET' && path === '/api/me') return json(res,200,actor);
-      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P01-P02',message:'登录与权限基础已接入；业务同步和总原型 v2 页面尚未接入。'});
+      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P03',message:'版本纳入、来源绑定和受控同步结构已接入；通知和总原型 v2 页面尚未接入。'});
+      if (req.method === 'GET' && path === '/api/versions') {
+        const rows = await pool.query(`SELECT v.id,v.source_version_id AS "sourceVersionId",v.display_name AS "displayName",v.lifecycle,v.sync_start_at AS "syncStartAt",v.enrolled_at AS "enrolledAt",p.teambition_project_id AS "projectId",p.display_name AS "projectName",s.last_status AS "syncStatus",s.last_success_at AS "lastSuccessAt",s.last_error_code AS "lastErrorCode" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id LEFT JOIN source_sync_states s ON s.managed_version_id=v.id ORDER BY v.enrolled_at,v.id`);
+        return json(res,200,rows.rows);
+      }
+      if (req.method === 'POST' && path === '/api/versions') {
+        requireRole(actor,'owner');
+        const value = await body(req);
+        return json(res,201,await enrollVersion(pool,{corpId:config.dingtalk.corpId,projectId:value.projectId,projectName:value.projectName,versionId:value.versionId,versionName:value.versionName,ownerId:actor.id}));
+      }
+      const syncTarget = path.match(/^\/api\/versions\/([0-9a-f-]+)\/sync$/i);
+      if (req.method === 'POST' && syncTarget) {
+        requireRole(actor,'admin');
+        if (typeof config.sourceReader !== 'function') throw new Denied(503,'来源读取尚未配置');
+        return json(res,200,await syncVersion(pool,syncTarget[1],()=>config.sourceReader(syncTarget[1])));
+      }
       if (req.method === 'POST' && path === '/auth/logout') {
         await logout(pool,jar.vpm_session); res.setHeader('Set-Cookie',cookie(config,'vpm_session','',0)); return json(res,200,{ok:true});
       }
