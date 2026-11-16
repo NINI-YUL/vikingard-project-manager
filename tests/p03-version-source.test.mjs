@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeWorkItem, enrollVersion, syncVersion } from '../app/version-source.mjs';
+import { normalizeWorkItem, enrollVersion, syncVersion, mapTeambitionTask, createTeambitionSourceReader } from '../app/version-source.mjs';
 import { readJson } from '../app/config.mjs';
 import { poolFor, migrate } from '../app/database.mjs';
 import { randomBytes } from 'node:crypto';
@@ -45,4 +45,34 @@ test('P03 PostgreSQL: enrollment, sync and source failure preserve existing fact
     await setup.query('DROP SCHEMA ' + schema + ' CASCADE');
     await setup.end();
   }
+});
+
+
+test('P03 Teambition reader paginates, filters exact sprint and preserves source IDs', async () => {
+  const calls = [];
+  const read = createTeambitionSourceReader({
+    projectId:'project-1', versionId:'version-1', fieldMap:{category:'cf-category',function:'cf-function'},
+    listTasks: async args => {
+      calls.push(args);
+      return calls.length === 1 ? {result:[
+        {id:'task-1',uniqueId:1001,content:'纳入任务',sprintId:'version-1',sfcId:'type-1',sfcName:'需求',tfsId:'status-1',tfsName:'待处理',customfields:[{cfId:'cf-category',value:[{title:'分类A'}]},{cfId:'cf-function',value:[{title:'职能A'}]}]}
+      ],nextPageToken:'next'} : {result:[
+        {id:'task-2',uniqueId:1002,content:'其他版本',sprintId:'version-2',customfields:[]},
+        {id:'task-3',uniqueId:1003,content:'缺失类型名称',sprintId:'version-1',sfcId:'type-3',tfsId:'status-3',customfields:[]}
+      ],nextPageToken:''};
+    }
+  });
+  const snapshot = await read();
+  assert.equal(calls.length,2);
+  assert.equal(calls[1].pageToken,'next');
+  assert.deepEqual(snapshot.items.map(item => item.sourceTaskId),['task-1','task-3']);
+  assert.equal(snapshot.items[0].category,'分类A');
+  assert.deepEqual(snapshot.items[1].structureIssues,['unknown_task_type','unknown_status']);
+});
+
+test('P03 Teambition task mapping keeps unknown fields explicit', () => {
+  const item = mapTeambitionTask({id:'task-4',uniqueId:1004,content:'任务',sprintId:'version-1',customfields:null});
+  assert.equal(item.sourceTaskId,'task-4');
+  assert.equal(item.visibleKey,'1004');
+  assert.deepEqual(item.structureIssues,['customfields_missing']);
 });

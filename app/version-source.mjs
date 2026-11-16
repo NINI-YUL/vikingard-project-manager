@@ -71,3 +71,46 @@ async function recordFailure(pool, versionId, runId, startedAt, code) {
     await client.query(`UPDATE source_sync_states SET last_attempt_at=now(),last_status='failed',last_error_code=$2,last_error_detail=$3 WHERE managed_version_id=$1`, [versionId, code, '来源读取失败，已有工作事实保留']);
   });
 }
+
+const fieldValue = (task, fieldId) => {
+  if (!fieldId) return null;
+  const field = Array.isArray(task?.customfields) ? task.customfields.find(item => item.cfId === fieldId) : null;
+  const value = field?.value?.[0];
+  return value?.title ?? value?.value ?? null;
+};
+
+export function mapTeambitionTask(task, fieldMap = {}) {
+  return {
+    sourceTaskId: task?.id,
+    visibleKey: task?.uniqueId == null ? null : String(task.uniqueId),
+    title: task?.content,
+    typeId: task?.sfcId,
+    typeName: task?.sfcName,
+    category: fieldValue(task, fieldMap.category),
+    functionName: fieldValue(task, fieldMap.function),
+    parentSourceTaskId: task?.parentTaskId,
+    status: task?.tfsName ?? task?.tfsId,
+    sourceUpdatedAt: task?.updated,
+    structureIssues: [
+      ...(task?.sfcId && !task?.sfcName ? ['unknown_task_type'] : []),
+      ...(task?.tfsId && !task?.tfsName ? ['unknown_status'] : []),
+      ...(!Array.isArray(task?.customfields) ? ['customfields_missing'] : [])
+    ],
+    rawSource: task
+  };
+}
+
+export function createTeambitionSourceReader({ listTasks, projectId, versionId, fieldMap = {}, pageSize = 100 }) {
+  if (typeof listTasks !== 'function' || !text(projectId, 100) || !text(versionId, 100)) throw new Error('来源读取参数不完整');
+  return async () => {
+    const items = [];
+    let pageToken;
+    do {
+      const page = await listTasks({ projectId, pageSize, pageToken, fields: 'all' });
+      if (!page || !Array.isArray(page.result)) throw new Error('来源响应结构错误');
+      items.push(...page.result.filter(task => task?.sprintId === versionId).map(task => mapTeambitionTask(task, fieldMap)));
+      pageToken = page.nextPageToken || '';
+    } while (pageToken);
+    return { items };
+  };
+}
