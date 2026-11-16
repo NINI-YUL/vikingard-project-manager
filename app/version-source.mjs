@@ -13,6 +13,7 @@ export function normalizeWorkItem(input, knownIds = new Set()) {
   const parent = text(input?.parentSourceTaskId, 200);
   if (parent && parent === sourceTaskId) issues.push('self_parent');
   if (parent && knownIds.size && !knownIds.has(parent)) issues.push('parent_missing');
+  issues.push(...list(input?.structureIssues));
   const availability = issues.length ? 'incomplete' : (input?.typeName || input?.category || input?.functionName || input?.status ? 'available' : 'unknown');
   return {
     sourceTaskId: sourceTaskId ?? `unknown-${randomUUID()}`,
@@ -26,9 +27,9 @@ export function normalizeWorkItem(input, knownIds = new Set()) {
     parentMissing: issues.includes('parent_missing'),
     rawStatus: text(input?.status, 200),
     availability,
-    structureIssues: [...new Set(issues.concat(list(input?.structureIssues)))],
+    structureIssues: [...new Set(issues)],
     sourceUpdatedAt: input?.sourceUpdatedAt ?? null,
-    rawSource: input && typeof input === 'object' ? input : {}
+    rawSource: input?.rawSource ?? (input && typeof input === 'object' ? input : {})
   };
 }
 
@@ -80,19 +81,22 @@ const fieldValue = (task, fieldId) => {
 };
 
 export function mapTeambitionTask(task, fieldMap = {}) {
+  const typeName = task?.sfcName ?? fieldMap.typeNames?.[task?.sfcId] ?? null;
+  const functionName = fieldValue(task, fieldMap.function);
   return {
     sourceTaskId: task?.id,
     visibleKey: task?.uniqueId == null ? null : String(task.uniqueId),
     title: task?.content,
     typeId: task?.sfcId,
-    typeName: task?.sfcName ?? fieldMap.typeNames?.[task?.sfcId] ?? null,
+    typeName,
     category: fieldValue(task, fieldMap.category),
-    functionName: fieldValue(task, fieldMap.function),
+    functionName,
     parentSourceTaskId: task?.parentTaskId,
     status: task?.tfsName ?? task?.tfsId,
     sourceUpdatedAt: task?.updated,
     structureIssues: [
-      ...(task?.sfcId && !(task?.sfcName ?? fieldMap.typeNames?.[task?.sfcId]) ? ['unknown_task_type'] : []),
+      ...(task?.sfcId && !typeName ? ['unknown_task_type'] : []),
+      ...(typeName === '子需求' && !functionName ? ['missing_function'] : []),
       ...(task?.tfsId && !task?.tfsName ? ['unknown_status'] : []),
       ...(!Array.isArray(task?.customfields) ? ['customfields_missing'] : [])
     ],

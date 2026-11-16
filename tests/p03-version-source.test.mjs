@@ -77,3 +77,25 @@ test('P03 Teambition task mapping keeps unknown fields explicit', () => {
   assert.equal(item.visibleKey,'1004');
   assert.deepEqual(item.structureIssues,['customfields_missing']);
 });
+
+
+test('P03 structured function overrides title; only core subtasks require function', () => {
+  const fields = {function:'function-field', typeNames:{core:'子需求',task:'任务'}};
+  const missing = normalizeWorkItem(mapTeambitionTask({id:'missing',content:'【客户端】测试',sfcId:'core',customfields:[]},fields));
+  assert.equal(missing.functionName,null);
+  assert.equal(missing.availability,'incomplete');
+  assert.deepEqual(missing.structureIssues,['missing_function']);
+  const source = {id:'filled',content:'【KGUI】测试',sfcId:'core',customfields:[{cfId:'function-field',value:[{title:'策划'}]}]};
+  const filled = normalizeWorkItem(mapTeambitionTask(source,fields));
+  assert.equal(filled.functionName,'策划');
+  assert.deepEqual(filled.rawSource,source);
+  assert.deepEqual(filled.structureIssues,[]);
+  const optional = normalizeWorkItem(mapTeambitionTask({id:'optional',content:'优化任务',sfcId:'task',customfields:[]},fields));
+  assert.deepEqual(optional.structureIssues,[]);
+});
+
+test('P03 unknown type makes configuration issue visible despite known status', () => {
+  const item = normalizeWorkItem(mapTeambitionTask({id:'unknown',content:'未知类型',sfcId:'unknown',tfsName:'待处理',customfields:[]}));
+  assert.equal(item.availability,'incomplete');
+  assert.deepEqual(item.structureIssues,['unknown_task_type']);
+});
