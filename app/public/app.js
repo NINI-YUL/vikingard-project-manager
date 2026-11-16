@@ -44,7 +44,17 @@ const syncNames={never:'待首次同步',running:'同步中',succeeded:'同步�
 const issueNames={missing_function:'缺少职能',unknown_task_type:'未知任务类型',unknown_status:'未知来源状态',customfields_missing:'自定义字段结构缺失',missing_title:'缺少标题',parent_missing:'父任务未纳入',self_parent:'父任务指向自身'};
 const date=value=>value ? new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',dateStyle:'short',timeStyle:'medium'}).format(new Date(value)) : '尚无记录';
 function cell(row,value){const td=document.createElement('td');td.textContent=value ?? '未填写';row.append(td);return td;}
-let selectedVersion,taskOffset=0,nextTaskOffset=null;
+let selectedVersion,taskOffset=0,nextTaskOffset=null,pollingEnabled=false;
+const presenceNames={current:'本次可读',archived:'来源已归档',out_of_scope:'已移出管理范围',access_restricted:'来源访问受限，原因待核对',missing_unknown:'来源缺失，原因不明',deleted_confirmed:'来源明确标记删除'};
+let historyTask,historyVersion,historyOffset=0,historyNext=null;
+async function history(version,item,offset=0){
+  historyTask=item;historyVersion=version;historyOffset=offset;
+  const data=await api('/api/versions/'+version.id+'/tasks/'+item.sourceTaskId+'/history?kind='+$('history-kind').value+'&offset='+offset);historyNext=data.nextOffset;
+  $('history-panel').hidden=false;$('history-title').textContent=(item.visibleKey??'')+' · '+item.title+' · 历史';$('history-count').textContent='共 '+data.total+' 条，本页 '+data.items.length+' 条。';$('history-records').textContent=JSON.stringify(data.items,null,2);$('history-prev').disabled=offset===0;$('history-next').disabled=data.nextOffset===null;
+}
+$('history-kind').onchange=()=>history(historyVersion,historyTask).catch(e=>message(e.message));
+$('history-prev').onclick=()=>history(historyVersion,historyTask,Math.max(0,historyOffset-100)).catch(e=>message(e.message));
+$('history-next').onclick=()=>{if(historyNext!==null)history(historyVersion,historyTask,historyNext).catch(e=>message(e.message));};
 async function tasks(version,offset=0){
   const data=await api('/api/versions/'+version.id+'/tasks?offset='+offset);
   selectedVersion=version;taskOffset=offset;nextTaskOffset=data.nextOffset;
@@ -53,24 +63,26 @@ async function tasks(version,offset=0){
   for(const item of data.items){const row=document.createElement('tr');
     cell(row,item.visibleKey);cell(row,item.title);cell(row,item.typeName);cell(row,item.category);cell(row,item.functionName);
     cell(row,item.parentVisibleKey ?? (item.parentSourceTaskId?'父任务未纳入':'无'));
-    cell(row,item.rawStatus);cell(row,item.structureIssues.length?item.structureIssues.map(i=>issueNames[i] ?? i).join('；'):(item.availability==='unknown'?'待识别':'已通过当前结构检查'));
+    cell(row,item.rawStatus);cell(row,presenceNames[item.sourcePresence]??'待核对');cell(row,item.structureIssues.length?item.structureIssues.map(i=>issueNames[i] ?? i).join('；'):(item.availability==='unknown'?'待识别':'已通过当前结构检查'));
+    cell(row,'').append(button('查看历史',()=>history(version,item)));
     $('tasks').append(row);
   }
   $('tasks-prev').disabled=offset===0;$('tasks-next').disabled=data.nextOffset===null;
 }
 async function versions(){
   const items=await api('/api/versions');$('versions').replaceChildren();
-  if(!items.length){const row=document.createElement('tr');const td=cell(row,'尚未纳入版本。');td.colSpan=6;$('versions').append(row);}
+  if(!items.length){const row=document.createElement('tr');const td=cell(row,'尚未纳入版本。');td.colSpan=7;$('versions').append(row);}
   for(const version of items){const row=document.createElement('tr');
     cell(row,version.displayName);cell(row,version.ownerName ?? '待确认');cell(row,date(version.syncStartAt));
     cell(row,(syncNames[version.syncStatus] ?? version.syncStatus)+' · '+date(version.lastSuccessAt)+(version.lastErrorCode?' · '+version.lastErrorCode:''));
+    cell(row,!pollingEnabled?'自动轮询未启用':!version.ownerConfirmed?'负责人待确认，自动同步暂停':'下次检查：'+date(version.nextDueAt));
     cell(row,version.bindingVerifiedAt?'已核对 · 配置版本 '+version.configVersion:'待首次核对');
     const actions=cell(row,'');actions.append(button('查看任务',()=>tasks(version)));
     if(['owner','admin'].includes(actor.role))actions.append(button('读取来源并同步',async()=>{
       const reason=window.prompt('请填写本次同步原因。取消则不执行。');if(!reason?.trim())return;
       message('正在读取来源并核对结构，请等待结果。');
       const result=await api('/api/versions/'+version.id+'/sync','POST',{reason});
-      message(result.status==='succeeded'?'同步完成：'+result.importedCount+' 张任务，'+result.issueCount+' 张存在结构问题。':'同步失败：'+result.errorCode+'。已有数据保留。');
+      message(result.status==='succeeded'?'同步完成：'+result.importedCount+' 张任务，'+result.issueCount+' 张存在结构问题。'+(result.reconciledCount?'另有 '+result.reconciledCount+' 张来源变化记录保留，请核对来源可用性。':''):'同步失败：'+result.errorCode+'。已有数据保留。');
       await versions();await tasks(version);await audit();
     }));
     $('versions').append(row);
@@ -98,7 +110,7 @@ try{
   else{
     try{actor=await api('/api/me');}catch(error){if(!error.message.startsWith('401'))throw error;}
     if(actor){$('account').hidden=false;$('identity').textContent=actor.displayName+' · '+names[actor.role];message('身份及当前权限校验通过。');
-      $('versions-section').hidden=false;await versions();
+      pollingEnabled=(await api('/api/status')).pollingEnabled;$('versions-section').hidden=false;await versions();
       if(actor.role==='owner'){$('management').hidden=false;await people();}
       if(['admin','owner'].includes(actor.role)){$('audit-section').hidden=false;await audit();try{await candidates();}catch{message('来源候选读取失败，已保存的版本和任务仍可查看。');}}
     }else{$('login').hidden=false;const code=new URL(location.href).searchParams.get('login');message(code==='403'?'当前钉钉身份未获授权，或企业身份验证未通过。':code?'登录失败，请重新发起或联系管理员。':'请使用已明确授权的钉钉账号登录。');}

@@ -1,4 +1,6 @@
 {
+  "pollingEnabled": false,
+  "pollIntervalSeconds": 900,
   "cliPath": "C:/path/to/teambition-cli.exe",
   "organizationId": "000000000000000000000001",
   "projectId": "000000000000000000000002",

@@ -53,6 +53,8 @@ try {
     await pool.query('GRANT USAGE ON SEQUENCE audit_events_id_seq TO vikingpm_app');
     await pool.query('GRANT SELECT ON schema_migrations TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT,UPDATE ON source_projects,managed_versions,tracking_periods,source_sync_states,source_sync_runs,work_items,source_bindings TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT ON source_activities,source_observations TO vikingpm_app');
+    await pool.query('REVOKE UPDATE,DELETE ON source_activities,source_observations FROM vikingpm_app');
     console.log(`业务库已准备；新增迁移 ${count}；登录未自动启用`);
   } else if (command === 'migrate') {
     const config = readJson(migrationPath);
@@ -60,6 +62,8 @@ try {
     pool = poolFor(config); stage = 'migrate';
     const count = await migrate(pool);
     await pool.query('GRANT SELECT,INSERT,UPDATE ON source_projects,managed_versions,tracking_periods,source_sync_states,source_sync_runs,work_items,source_bindings TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT ON source_activities,source_observations TO vikingpm_app');
+    await pool.query('REVOKE UPDATE,DELETE ON source_activities,source_observations FROM vikingpm_app');
     console.log(`迁移完成；新增 ${count}`);
   } else if (command === 'bootstrap') {
     const config = loadConfig();

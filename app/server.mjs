@@ -38,7 +38,7 @@ export function createApplication(pool,config,{ loginResolver, source } = {}) {
         const [type,file] = assets.get(path); res.writeHead(200,{'Content-Type':type}); return res.end(readFileSync(new URL('public/'+file,import.meta.url)));
       }
       if (req.method === 'GET' && path === '/healthz') {
-        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P03',loginEnabled:config.loginEnabled}); }
+        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P04',loginEnabled:config.loginEnabled}); }
         catch { return json(res,503,{status:'unavailable'}); }
       }
       if (req.method === 'GET' && path === '/auth/dingtalk/start') {
@@ -60,7 +60,7 @@ export function createApplication(pool,config,{ loginResolver, source } = {}) {
         if (req.headers.origin !== config.origin || req.headers['x-csrf-token'] !== actor.csrf) throw new Denied(403,'请求来源或会话校验失败');
       }
       if (req.method === 'GET' && path === '/api/me') return json(res,200,actor);
-      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P03',sourceConfigured:Boolean(source),message:'版本来源只读接入；周期同步和业务计算尚未接入。'});
+      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P04',sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'持久同步与来源历史已接入；业务阶段计算尚未接入。'});
       if (req.method === 'GET' && path === '/api/version-people') {
         requireRole(actor,'admin');
         return json(res,200,(await pool.query('SELECT p.id,p.display_name AS "displayName" FROM people p JOIN identity_mappings i ON i.person_id=p.id WHERE p.active AND i.enabled AND i.confirmed AND i.corp_id=$1 ORDER BY p.display_name,p.id',[config.dingtalk.corpId])).rows);
@@ -72,7 +72,7 @@ export function createApplication(pool,config,{ loginResolver, source } = {}) {
         return json(res,200,choices);
       }
       if (req.method === 'GET' && path === '/api/versions') {
-        const rows = await pool.query(`SELECT v.id,v.source_version_id AS "sourceVersionId",v.display_name AS "displayName",v.lifecycle,v.sync_start_at AS "syncStartAt",v.enrolled_at AS "enrolledAt",v.owner_id AS "ownerId",person.display_name AS "ownerName",p.teambition_project_id AS "projectId",p.display_name AS "projectName",s.last_status AS "syncStatus",s.last_success_at AS "lastSuccessAt",s.last_error_code AS "lastErrorCode",p.config_version AS "configVersion",b.verified_at AS "bindingVerifiedAt" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id LEFT JOIN people person ON person.id=v.owner_id LEFT JOIN source_sync_states s ON s.managed_version_id=v.id LEFT JOIN source_bindings b ON b.source_project_id=p.id ORDER BY v.enrolled_at,v.id`);
+        const rows = await pool.query(`SELECT v.id,v.source_version_id AS "sourceVersionId",v.display_name AS "displayName",v.lifecycle,v.sync_start_at AS "syncStartAt",v.enrolled_at AS "enrolledAt",v.owner_id AS "ownerId",person.display_name AS "ownerName",p.teambition_project_id AS "projectId",p.display_name AS "projectName",s.last_status AS "syncStatus",s.last_success_at AS "lastSuccessAt",s.last_error_code AS "lastErrorCode",s.next_due_at AS "nextDueAt",s.failure_count AS "failureCount",EXISTS(SELECT 1 FROM identity_mappings oi JOIN people op ON op.id=oi.person_id WHERE oi.person_id=v.owner_id AND oi.enabled AND oi.confirmed AND op.active AND oi.corp_id=p.corp_id) AS "ownerConfirmed",p.config_version AS "configVersion",b.verified_at AS "bindingVerifiedAt" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id LEFT JOIN people person ON person.id=v.owner_id LEFT JOIN source_sync_states s ON s.managed_version_id=v.id LEFT JOIN source_bindings b ON b.source_project_id=p.id ORDER BY v.enrolled_at,v.id`);
         return json(res,200,rows.rows);
       }
       if (req.method === 'POST' && path === '/api/versions') {
@@ -89,8 +89,24 @@ export function createApplication(pool,config,{ loginResolver, source } = {}) {
         if (!Number.isSafeInteger(offset) || offset<0 || offset>10000) throw new Denied(400,'分页参数不合法');
         if (!(await pool.query('SELECT 1 FROM managed_versions WHERE id=$1',[taskTarget[1]])).rowCount) throw new Denied(404,'版本不存在');
         const total=(await pool.query('SELECT count(*)::int AS count FROM work_items WHERE managed_version_id=$1',[taskTarget[1]])).rows[0].count;
-        const rows=await pool.query(`SELECT w.source_task_id AS "sourceTaskId",w.visible_key AS "visibleKey",w.title,w.type_name AS "typeName",w.category,w.function_name AS "functionName",w.parent_source_task_id AS "parentSourceTaskId",parent.visible_key AS "parentVisibleKey",w.source_status_id AS "sourceStatusId",w.raw_status AS "rawStatus",w.availability,w.structure_issues AS "structureIssues",w.last_synced_at AS "lastSyncedAt" FROM work_items w LEFT JOIN work_items parent ON parent.managed_version_id=w.managed_version_id AND parent.source_task_id=w.parent_source_task_id WHERE w.managed_version_id=$1 ORDER BY w.source_task_id LIMIT 100 OFFSET $2`,[taskTarget[1],offset]);
+        const rows=await pool.query(`SELECT w.source_task_id AS "sourceTaskId",w.visible_key AS "visibleKey",w.title,w.type_name AS "typeName",w.category,w.function_name AS "functionName",w.parent_source_task_id AS "parentSourceTaskId",parent.visible_key AS "parentVisibleKey",w.source_status_id AS "sourceStatusId",w.raw_status AS "rawStatus",w.availability,w.source_presence AS "sourcePresence",w.history_status AS "historyStatus",w.structure_issues AS "structureIssues",w.last_synced_at AS "lastSyncedAt" FROM work_items w LEFT JOIN work_items parent ON parent.managed_version_id=w.managed_version_id AND parent.source_task_id=w.parent_source_task_id WHERE w.managed_version_id=$1 ORDER BY w.source_task_id LIMIT 100 OFFSET $2`,[taskTarget[1],offset]);
         return json(res,200,{items:rows.rows,total,nextOffset:offset+rows.rowCount<total ? offset+rows.rowCount : null});
+      }
+      const historyTarget=path.match(/^\/api\/versions\/([0-9a-f-]{36})\/tasks\/([a-zA-Z0-9_-]{1,200})\/history$/);
+      if(req.method==='GET' && historyTarget) {
+        const kind=url.searchParams.get('kind') ?? 'activities',offset=Number(url.searchParams.get('offset')??0);
+        if(!['activities','observations'].includes(kind)||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new Denied(400,'历史分页参数不合法');
+        const found=(await pool.query('SELECT w.id,v.source_project_id FROM work_items w JOIN managed_versions v ON v.id=w.managed_version_id WHERE w.managed_version_id=$1 AND w.source_task_id=$2',[historyTarget[1],historyTarget[2]])).rows[0];
+        if(!found)throw new Denied(404,'任务不存在');
+        let result,total;
+        if(kind==='activities') {
+          total=(await pool.query('SELECT count(*)::int AS count FROM source_activities WHERE source_project_id=$1 AND source_task_id=$2',[found.source_project_id,historyTarget[2]])).rows[0].count;
+          result=await pool.query('SELECT source_activity_id AS "sourceActivityId",revision_hash AS "revisionHash",action,occurred_at AS "occurredAt",source_updated_at AS "sourceUpdatedAt",fetched_at AS "fetchedAt" FROM source_activities WHERE source_project_id=$1 AND source_task_id=$2 ORDER BY occurred_at,source_activity_id,revision_hash LIMIT 100 OFFSET $3',[found.source_project_id,historyTarget[2],offset]);
+        } else {
+          total=(await pool.query('SELECT count(*)::int AS count FROM source_observations WHERE work_item_id=$1',[found.id])).rows[0].count;
+          result=await pool.query('SELECT observed_at AS "observedAt",source_updated_at AS "sourceUpdatedAt",facts FROM source_observations WHERE work_item_id=$1 ORDER BY observed_at,id LIMIT 100 OFFSET $2',[found.id,offset]);
+        }
+        return json(res,200,{kind,total,items:result.rows,nextOffset:offset+result.rowCount<total?offset+result.rowCount:null});
       }
       const syncTarget = path.match(/^\/api\/versions\/([0-9a-f-]{36})\/sync$/i);
       if (req.method === 'POST' && syncTarget) {
@@ -101,7 +117,7 @@ export function createApplication(pool,config,{ loginResolver, source } = {}) {
         return json(res,200,await syncVersion(pool,syncTarget[1],binding=>{
           if (binding.corpId!==config.dingtalk.corpId) throw new Error('来源企业不匹配');
           return source.read(binding);
-        },{actorId:actor.id,reason:value.reason}));
+        },{actorId:actor.id,reason:value.reason,intervalSeconds:config.teambition?.pollIntervalSeconds??900}));
       }
       if (req.method === 'POST' && path === '/auth/logout') {
         await logout(pool,jar.vpm_session); res.setHeader('Set-Cookie',cookie(config,'vpm_session','',0)); return json(res,200,{ok:true});

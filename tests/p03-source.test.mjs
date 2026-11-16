@@ -6,7 +6,7 @@ const config={cliPath:'C:/fake/teambition-cli.exe',organizationId:org,projectId:
 function fake(overrides={}) {
   return async(action,args)=>{
     if(overrides[action])return overrides[action](args);
-    const data={query:[{id:project,organizationId:org,name:'测试项目'}],'sprint-query':[{id:version,projectId:project,name:'测试迭代'}],'sfc-query':[{_id:type,name:'子需求',_taskflowId:'2'.repeat(24)}],'tfs-query':[{id:status,name:'待处理'}],'customfield-query':[{_id:category,name:'工单分类',type:'dropDown'},{_id:fn,name:'职能',type:'dropDown'}],'task-query':[{id:'task',projectId:project,sprintId:version,isArchived:false,sfcId:type,tfsId:status,content:'测试',customfields:[{cfId:fn,value:[{title:'客户端'}]}]}]};
+    const data={query:[{id:project,organizationId:org,name:'测试项目'}],'sprint-query':[{id:version,projectId:project,name:'测试迭代'}],'sfc-query':[{_id:type,name:'子需求',_taskflowId:'2'.repeat(24)}],'tfs-query':[{id:status,name:'待处理'}],'customfield-query':[{_id:category,name:'工单分类',type:'dropDown'},{_id:fn,name:'职能',type:'dropDown'}],'task-activity':[],'task-query':[{id:'3'.repeat(24),projectId:project,sprintId:version,isArchived:false,sfcId:type,tfsId:status,content:'测试',customfields:[{cfId:fn,value:[{title:'客户端'}]}]}]};
     return {code:200,result:data[action],nextPageToken:''};
   };
 }

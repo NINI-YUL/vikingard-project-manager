@@ -1,13 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { transaction } from './database.mjs';
+import {validateHistory,persistHistory} from './source-history.mjs';
 import { Denied, requireCurrentRole } from './security.mjs';
 
+const scheduledActor=Symbol('scheduled-sync');
 const text = (value, max) => typeof value === 'string' && value.trim() && value.length <= max && !/[\x00-\x1f]/.test(value) ? value.trim() : null;
 const list = value => Array.isArray(value) ? value.filter(item => typeof item === 'string' && item.trim()).map(item => item.trim()) : [];
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
 function reason(value) { if (!text(value,500)) throw new Denied(400,'请填写操作原因'); }
 async function audit(client, actorId, action, after, why) {
-  await client.query('INSERT INTO audit_events(actor_id,action,after_value,reason) VALUES($1,$2,$3,$4)',[actorId,action,after,why]);
+  await client.query('INSERT INTO audit_events(actor_id,action,after_value,reason) VALUES($1,$2,$3,$4)',[actorId===scheduledActor?null:actorId,action,after,why]);
 }
 export function normalizeWorkItem(input, knownIds = new Set()) {
   const issues = [];
@@ -21,6 +23,8 @@ export function normalizeWorkItem(input, knownIds = new Set()) {
   issues.push(...list(input?.structureIssues));
   return {
     sourceTaskId,
+    executorSourceId:input?.executorSourceId ?? null,participantSourceIds:input?.participantSourceIds ?? null,
+    plannedStartAt:input?.plannedStartAt ?? null,plannedDueAt:input?.plannedDueAt ?? null,sourceCompletedAt:input?.sourceCompletedAt ?? null,isDone:input?.isDone ?? null,
     visibleKey: text(input?.visibleKey, 200), title: title ?? '未识别标题',
     typeId: text(input?.typeId, 200), typeName: text(input?.typeName, 200),
     category: text(input?.category, 200), functionName: text(input?.functionName, 200),
@@ -38,6 +42,7 @@ export function validateSnapshot(snapshot) {
     if (!text(item?.sourceTaskId,200) || item.sourceTaskId !== item.sourceTaskId.trim() || ids.has(item.sourceTaskId) || (item.sourceUpdatedAt != null && (typeof item.sourceUpdatedAt !== 'string' || !Number.isFinite(Date.parse(item.sourceUpdatedAt))))) throw new Error('来源任务标识、时间或去重校验失败');
     ids.add(item.sourceTaskId);
   }
+  for(const item of snapshot.items)for(const key of ['plannedStartAt','plannedDueAt','sourceCompletedAt'])if(item[key]!=null && (typeof item[key]!=='string'||!Number.isFinite(Date.parse(item[key]))))throw new Error('来源计划或完成日期不合法');
   const items = snapshot.items.map(item => normalizeWorkItem(item,ids));
   const parents = new Map(items.map(item => [item.sourceTaskId,item.parentSourceTaskId]));
   const done = new Set();
@@ -68,6 +73,7 @@ export async function enrollVersion(pool, input, actorId) {
       if (previous.lifecycle !== 'enrolled') throw new Denied(409,'该版本需要单独恢复纳入');
       if (previous.owner_id !== ownerId) {
         await client.query('UPDATE managed_versions SET owner_id=$2 WHERE id=$1',[previous.id,ownerId]);
+        await client.query('UPDATE source_sync_states SET next_due_at=LEAST(next_due_at,now()) WHERE managed_version_id=$1',[previous.id]);
         await audit(client,actorId,'version.owner.confirm',{versionId:previous.id,previousOwnerId:previous.owner_id,ownerId},why);
       }
       return {...previous,owner_id:ownerId};
@@ -79,24 +85,37 @@ export async function enrollVersion(pool, input, actorId) {
     return version;
   });
 }
-export async function syncVersion(pool, versionId, readSource, {actorId,reason:why} = {}) {
+async function authorizeSync(client,versionId,actorId,lock=true) {
+  if(actorId!==scheduledActor)return requireCurrentRole(client,actorId,'admin',lock);
+  if(lock)await client.query('SELECT id FROM security_state WHERE id=1 FOR UPDATE');
+  const owner=await client.query(`SELECT 1 FROM managed_versions v JOIN people p ON p.id=v.owner_id JOIN identity_mappings i ON i.person_id=p.id JOIN source_projects s ON s.id=v.source_project_id WHERE v.id=$1 AND v.lifecycle='enrolled' AND p.active AND i.enabled AND i.confirmed AND i.corp_id=s.corp_id`,[versionId]);
+  if(!owner.rowCount)throw new Denied(409,'版本负责人尚未确认或身份无效，自动同步暂停');
+}
+export function syncScheduledVersion(pool,versionId,readSource,intervalSeconds) {
+  return syncVersion(pool,versionId,readSource,{actorId:scheduledActor,reason:'系统轮询：受控来源同步与对账',intervalSeconds});
+}
+export async function syncVersion(pool, versionId, readSource, {actorId,reason:why,intervalSeconds=900} = {}) {
+  if(!Number.isInteger(intervalSeconds)||intervalSeconds<60||intervalSeconds>86400)throw new Denied(400,'同步间隔不合法');
   if (!uuid(versionId)) throw new Denied(400,'版本标识不合法'); reason(why);
   return transaction(pool,async client => {
     const locked = (await client.query('SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS locked',['version:'+versionId])).rows[0].locked;
     if (!locked) throw new Denied(409,'该版本正在同步，请稍后刷新');
-    await requireCurrentRole(client,actorId,'admin',false);
+    await authorizeSync(client,versionId,actorId,false);
     const version = (await client.query(`SELECT v.*,p.teambition_project_id AS "projectId",p.corp_id AS "corpId" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id WHERE v.id=$1`,[versionId])).rows[0];
     if (!version) throw new Denied(404,'版本不存在');
     if (version.lifecycle !== 'enrolled') throw new Denied(409,'该版本未处于纳入状态');
+    const knownIds=(await client.query('SELECT source_task_id FROM work_items WHERE managed_version_id=$1',[versionId])).rows.map(row=>row.source_task_id);
+    const runId=randomUUID();
     const startedAt = new Date(); let snapshot,items,errorCode;
-    try { snapshot = await readSource({projectId:version.projectId,sourceVersionId:version.source_version_id,corpId:version.corpId}); }
+    try { snapshot = await readSource({projectId:version.projectId,sourceVersionId:version.source_version_id,corpId:version.corpId,knownTaskIds:knownIds}); }
     catch { errorCode = 'SOURCE_READ_FAILED'; }
-    if (!errorCode) { try { items = validateSnapshot(snapshot); } catch { errorCode = 'SOURCE_STRUCTURE_INVALID'; } }
+    if (!errorCode) { try { items = validateSnapshot(snapshot);validateHistory(snapshot,items,knownIds); } catch { errorCode = 'SOURCE_STRUCTURE_INVALID'; } }
     // Recheck under the same security lock as revocation before committing any source facts.
-    await requireCurrentRole(client,actorId,'admin');
+    await authorizeSync(client,versionId,actorId);
     if (errorCode) {
-      await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,error_code,error_detail) VALUES($1,$2,$3,now(),'failed',$4,$5)",[randomUUID(),versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
+      await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,error_code,error_detail) VALUES($1,$2,$3,now(),'failed',$4,$5)",[runId,versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
       await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_status='failed',last_error_code=$3,last_error_detail=$4 WHERE managed_version_id=$1",[versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
+      await client.query("UPDATE source_sync_states SET next_due_at=now()+LEAST($2,60*power(2,LEAST(failure_count,8)))::integer * interval '1 second',failure_count=failure_count+1 WHERE managed_version_id=$1",[versionId,intervalSeconds]);
       await audit(client,actorId,'version.sync.failed',{versionId,errorCode},why);
       return {status:'failed',errorCode,importedCount:0};
     }
@@ -109,9 +128,11 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
     for (const item of items) await client.query(`INSERT INTO work_items(id,managed_version_id,source_task_id,visible_key,title,type_id,type_name,category,function_name,parent_source_task_id,parent_missing,source_status_id,raw_status,availability,structure_issues,source_updated_at,last_synced_at,raw_source)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now(),$17)
       ON CONFLICT(managed_version_id,source_task_id) DO UPDATE SET visible_key=EXCLUDED.visible_key,title=EXCLUDED.title,type_id=EXCLUDED.type_id,type_name=EXCLUDED.type_name,category=EXCLUDED.category,function_name=EXCLUDED.function_name,parent_source_task_id=EXCLUDED.parent_source_task_id,parent_missing=EXCLUDED.parent_missing,source_status_id=EXCLUDED.source_status_id,raw_status=EXCLUDED.raw_status,availability=EXCLUDED.availability,structure_issues=EXCLUDED.structure_issues,source_updated_at=EXCLUDED.source_updated_at,last_synced_at=now(),raw_source=EXCLUDED.raw_source`,[randomUUID(),versionId,item.sourceTaskId,item.visibleKey,item.title,item.typeId,item.typeName,item.category,item.functionName,item.parentSourceTaskId,item.parentMissing,item.sourceStatusId,item.rawStatus,item.availability,JSON.stringify(item.structureIssues),item.sourceUpdatedAt,JSON.stringify(item.rawSource)]);
-    await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,imported_count) VALUES($1,$2,$3,now(),'succeeded',$4)",[randomUUID(),versionId,startedAt,items.length]);
+    await persistHistory(client,version,items,snapshot);
+    await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,imported_count) VALUES($1,$2,$3,now(),'succeeded',$4)",[runId,versionId,startedAt,items.length]);
     await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_success_at=now(),last_status='succeeded',last_error_code=NULL,last_error_detail=NULL WHERE managed_version_id=$1",[versionId,startedAt]);
-    const result = {status:'succeeded',importedCount:items.length,issueCount:items.filter(i=>i.structureIssues.length).length};
+    await client.query("UPDATE source_sync_states SET cursor=$2,failure_count=0,next_due_at=now()+$3::integer * interval '1 second' WHERE managed_version_id=$1",[versionId,runId,intervalSeconds]);
+    const result = {status:'succeeded',importedCount:items.length,issueCount:items.filter(i=>i.structureIssues.length).length,...(snapshot.reconciliations?.length?{reconciledCount:snapshot.reconciliations.length}:{})};
     await audit(client,actorId,'version.sync.succeeded',{versionId,...result},why);
     return result;
   });
@@ -126,6 +147,7 @@ export function mapTeambitionTask(task, fieldMap = {}) {
   const statusName = fieldMap.statusNames ? fieldMap.statusNames[task?.tfsId] : task?.tfsName;
   const functionName = fieldValue(task,fieldMap.function);
   return {
+    executorSourceId:task?.executorId ?? null,participantSourceIds:task?.involveMembers ?? null,plannedStartAt:task?.startDate ?? null,plannedDueAt:task?.dueDate ?? null,sourceCompletedAt:task?.accomplishTime ?? null,isDone:typeof task?.isDone==='boolean'?task.isDone:null,
     sourceTaskId:task?.id,visibleKey:task?.uniqueId == null ? null : String(task.uniqueId),title:task?.content,
     typeId:task?.sfcId,typeName:typeName ?? null,category:fieldValue(task,fieldMap.category),functionName,
     parentSourceTaskId:task?.parentTaskId,sourceStatusId:task?.tfsId,status:statusName ?? task?.tfsId,

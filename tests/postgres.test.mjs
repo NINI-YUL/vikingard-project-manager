@@ -21,7 +21,7 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
   let server;
   try{
     await t.test('迁移重复运行不重复建表；篡改迁移记录时失败',async()=>{
-      assert.equal(await migrate(pool),3);assert.equal(await migrate(pool),0);
+      assert.equal(await migrate(pool),4);assert.equal(await migrate(pool),0);
       await pool.query("UPDATE schema_migrations SET checksum='invalid'");await assert.rejects(migrate(pool));
       await pool.query('DELETE FROM schema_migrations');
       // Recover only the checksum in this isolated schema, without re-running DDL.
@@ -31,6 +31,8 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
       await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['002-p-version-source.sql',digest(sql2)]);
       const sql3=await readFile(new URL('../migrations/003-source-binding.sql',import.meta.url),'utf8');
       await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['003-source-binding.sql',digest(sql3)]);
+      const sql4=await readFile(new URL('../migrations/004-persistent-sync.sql',import.meta.url),'utf8');
+      await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['004-persistent-sync.sql',digest(sql4)]);
       assert.equal(await migrate(pool),0);
     });
     const approval={confirmed:true,corpId:'corp-test',reason:'隔离构造数据测试',people:[{displayName:'owner A',unionId:'owner-a',role:'owner'},{displayName:'owner B',unionId:'owner-b',role:'owner'},{displayName:'viewer',unionId:'viewer',role:'viewer'},{displayName:'admin',unionId:'admin',role:'admin'},{displayName:'none',unionId:'none',role:'none'}]};
@@ -93,6 +95,10 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
       const synced=await request(syncPath,admin,'POST',{reason:'同步测试'});assert.equal(synced.status,200);assert.equal((await synced.json()).status,'succeeded');
       const tasks=await request('/api/versions/'+version.id+'/tasks',view);assert.equal(tasks.status,200);
       assert.equal((await tasks.json()).total,1);
+      const historyPath='/api/versions/'+version.id+'/tasks/http-task/history?kind=observations';
+      assert.equal((await (await request(historyPath,view)).json()).total,1);
+      assert.equal((await request(historyPath)).status,401);
+      assert.equal((await request('/api/versions/'+version.id+'/tasks/unknown/history',view)).status,404);
       assert.equal((await request('/api/versions/'+version.id+'/tasks?offset=-1',view)).status,400);
       assert.equal((await request('/api/versions/'+version.id+'/tasks')).status,401);
       failSource=true;
