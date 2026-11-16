@@ -52,6 +52,7 @@ try {
     await pool.query('GRANT SELECT,INSERT ON audit_events TO vikingpm_app');
     await pool.query('GRANT USAGE ON SEQUENCE audit_events_id_seq TO vikingpm_app');
     await pool.query('GRANT SELECT ON schema_migrations TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT,UPDATE ON source_projects,managed_versions,tracking_periods,source_sync_states,source_sync_runs,work_items TO vikingpm_app');
     console.log(`业务库已准备；新增迁移 ${count}；登录未自动启用`);
   } else if (command === 'migrate') {
     const config = readJson(migrationPath);
