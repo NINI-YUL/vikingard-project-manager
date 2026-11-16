@@ -21,7 +21,7 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
   let server;
   try{
     await t.test('迁移重复运行不重复建表；篡改迁移记录时失败',async()=>{
-      assert.equal(await migrate(pool),2);assert.equal(await migrate(pool),0);
+      assert.equal(await migrate(pool),3);assert.equal(await migrate(pool),0);
       await pool.query("UPDATE schema_migrations SET checksum='invalid'");await assert.rejects(migrate(pool));
       await pool.query('DELETE FROM schema_migrations');
       // Recover only the checksum in this isolated schema, without re-running DDL.
@@ -29,6 +29,8 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
       await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['001-identity-access.sql',digest(sql)]);
       const sql2=await readFile(new URL('../migrations/002-p-version-source.sql',import.meta.url),'utf8');
       await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['002-p-version-source.sql',digest(sql2)]);
+      const sql3=await readFile(new URL('../migrations/003-source-binding.sql',import.meta.url),'utf8');
+      await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['003-source-binding.sql',digest(sql3)]);
       assert.equal(await migrate(pool),0);
     });
     const approval={confirmed:true,corpId:'corp-test',reason:'隔离构造数据测试',people:[{displayName:'owner A',unionId:'owner-a',role:'owner'},{displayName:'owner B',unionId:'owner-b',role:'owner'},{displayName:'viewer',unionId:'viewer',role:'viewer'},{displayName:'admin',unionId:'admin',role:'admin'},{displayName:'none',unionId:'none',role:'none'}]};
@@ -64,7 +66,11 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
       await assert.rejects(completeLogin(pool,config,failing,failed.state,resolver),{status:400});
     });
     await t.test('HTTP 逐次鉴权：匿名拒绝、查看者不可写、管理员不可授权、来源和 CSRF 校验',async()=>{
-      server=createApplication(pool,config);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));config.origin='http://127.0.0.1:'+server.address().port;
+      let failSource=false,sourceCalls=0;
+      const source={candidates:[{projectId:'a'.repeat(24),versionIds:['b'.repeat(24)]}],
+        getVersion:async(projectId,versionId)=>({projectId,versionId,projectName:'测试项目',versionName:'受控迭代'}),
+        read:async()=>{sourceCalls++;if(failSource)throw new Error('FAKE_PROVIDER_SECRET');return {items:[{sourceTaskId:'http-task',visibleKey:'1',title:'<script>test</script>',typeName:'任务',status:'待处理'}],binding:{organizationId:'test-org',categoryFieldId:'cf-category',functionFieldId:'cf-function',typeNames:{task:'任务'},statusNames:{todo:'待处理'}}};}};
+      server=createApplication(pool,config,{source});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));config.origin='http://127.0.0.1:'+server.address().port;
       const request=async(path,token,method='GET',value,headers={})=>{
         const actor=token?await authenticate(pool,token):null;
         return fetch(config.origin+path,{method,redirect:'manual',headers:{...(token?{Cookie:'vpm_session='+token}:{}),...(method!=='GET'?{Origin:config.origin,'x-csrf-token':actor?.csrf ?? '', 'Content-Type':'application/json'}:{}),...headers},...(value?{body:JSON.stringify(value)}:{})});
@@ -72,6 +78,31 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
       const view=await session('viewer'), admin=await session('admin'),own=await session('owner-a');
       assert.equal((await request('/api/status')).status,401);assert.equal((await request('/api/status',view)).status,200);
       assert.equal((await request('/api/access',view)).status,403);
+      const enrollment={projectId:'a'.repeat(24),versionId:'b'.repeat(24),ownerId:persons.viewer,reason:'HTTP隔离纳入测试'};
+      assert.equal((await request('/api/versions')).status,401);
+      assert.equal((await request('/api/versions',view,'POST',enrollment)).status,403);
+      assert.equal((await request('/api/version-people',view)).status,403);
+      assert.equal((await request('/api/versions',own,'POST',{...enrollment,versionName:'forged'})).status,400);
+      const created=await request('/api/versions',admin,'POST',enrollment);assert.equal(created.status,201);
+      const version=await created.json();assert.equal(version.owner_id,persons.viewer);assert.equal((await authenticate(pool,view)).role,'viewer');
+      const syncPath='/api/versions/'+version.id+'/sync';
+      assert.equal((await request('/api/versions',own,'POST',enrollment)).status,201);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM managed_versions')).rows[0].n,1);
+      assert.equal((await request(syncPath,view,'POST',{reason:'no permission'})).status,403);assert.equal(sourceCalls,0);
+      assert.equal((await request(syncPath,admin,'POST',{reason:'bad csrf'},{'x-csrf-token':'wrong'})).status,403);
+      const synced=await request(syncPath,admin,'POST',{reason:'同步测试'});assert.equal(synced.status,200);assert.equal((await synced.json()).status,'succeeded');
+      const tasks=await request('/api/versions/'+version.id+'/tasks',view);assert.equal(tasks.status,200);
+      assert.equal((await tasks.json()).total,1);
+      assert.equal((await request('/api/versions/'+version.id+'/tasks?offset=-1',view)).status,400);
+      assert.equal((await request('/api/versions/'+version.id+'/tasks')).status,401);
+      failSource=true;
+      const failure=await request(syncPath,own,'POST',{reason:'来源故障测试'});assert.equal(failure.status,200);
+      const detail=await failure.text();assert.ok(detail.includes('SOURCE_READ_FAILED'));assert.ok(!detail.includes('FAKE_PROVIDER_SECRET'));
+      assert.equal((await (await request('/api/versions/'+version.id+'/tasks',view)).json()).total,1);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM source_bindings')).rows[0].n,1);
+      const actions=(await pool.query("SELECT action FROM audit_events WHERE action LIKE 'version.%' ORDER BY id")).rows.map(r=>r.action);
+      assert.deepEqual(actions,['version.enroll','version.sync.succeeded','version.sync.failed']);
+
       for(const token of [view,admin]) assert.equal((await request('/api/access/'+ownerB,token,'PATCH',{role:'none',reason:'test'})).status,403);
       assert.equal((await request('/api/identities/'+persons.viewer,view,'PATCH',{active:false,reason:'test'})).status,403);
       assert.equal((await request('/api/access/'+persons.viewer,own,'PATCH',{role:'viewer',reason:'test'},{Origin:'https://attacker.invalid'})).status,403);

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { validateTeambitionConfig } from './teambition-source.mjs';
 import { parseEnvFile } from '../scripts/dingtalk-progress-form-link.mjs';
 
 export function readJson(path) {
@@ -20,6 +21,7 @@ export function validateConfig(value) {
     if (typeof c.loginEnabled !== 'boolean') throw 0;
     if (c.loginEnabled && (!c.dingtalk?.corpId || !isAbsolute(c.dingtalk.envPath))) throw 0;
     if (origin.protocol === 'https:' && (!isAbsolute(c.tls?.certPath ?? '') || !isAbsolute(c.tls?.keyPath ?? ''))) throw 0;
+    if (c.teambition) validateTeambitionConfig(c.teambition);
     return Object.freeze(c);
   } catch { throw new Error('应用配置不合法；内网登录必须使用 HTTPS，业务库必须独立'); }
 }

@@ -21,6 +21,10 @@ async function lock(client) {
   // One row serializes bootstrap, role changes and identity changes, including concurrent owner removals.
   await client.query('SELECT id FROM security_state WHERE id=1 FOR UPDATE');
 }
+export async function requireCurrentRole(client, actorId, minimum, lockState = true) {
+  if (lockState) await lock(client);
+  requireRole(await actorNow(client, actorId), minimum);
+}
 async function protectOwner(client) {
   const { rows } = await client.query(`SELECT count(*)::int AS count FROM people p JOIN identity_mappings i ON i.person_id=p.id
     JOIN access_grants g ON g.person_id=p.id WHERE p.active AND i.enabled AND i.confirmed AND g.role='owner'`);

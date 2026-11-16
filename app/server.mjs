@@ -23,7 +23,7 @@ async function body(req) {
   try { const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw 0; return parsed; }
   catch { throw new Denied(400,'请求格式错误'); }
 }
-export function createApplication(pool,config,{ loginResolver } = {}) {
+export function createApplication(pool,config,{ loginResolver, source } = {}) {
   const handle = async (req,res) => {
     res.setHeader('Cache-Control','no-store');
     res.setHeader('Referrer-Policy','no-referrer');
@@ -38,7 +38,7 @@ export function createApplication(pool,config,{ loginResolver } = {}) {
         const [type,file] = assets.get(path); res.writeHead(200,{'Content-Type':type}); return res.end(readFileSync(new URL('public/'+file,import.meta.url)));
       }
       if (req.method === 'GET' && path === '/healthz') {
-        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P01-P02',loginEnabled:config.loginEnabled}); }
+        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P03',loginEnabled:config.loginEnabled}); }
         catch { return json(res,503,{status:'unavailable'}); }
       }
       if (req.method === 'GET' && path === '/auth/dingtalk/start') {
@@ -60,21 +60,48 @@ export function createApplication(pool,config,{ loginResolver } = {}) {
         if (req.headers.origin !== config.origin || req.headers['x-csrf-token'] !== actor.csrf) throw new Denied(403,'请求来源或会话校验失败');
       }
       if (req.method === 'GET' && path === '/api/me') return json(res,200,actor);
-      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P03',message:'版本纳入、来源绑定和受控同步结构已接入；通知和总原型 v2 页面尚未接入。'});
+      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P03',sourceConfigured:Boolean(source),message:'版本来源只读接入；周期同步和业务计算尚未接入。'});
+      if (req.method === 'GET' && path === '/api/version-people') {
+        requireRole(actor,'admin');
+        return json(res,200,(await pool.query('SELECT p.id,p.display_name AS "displayName" FROM people p JOIN identity_mappings i ON i.person_id=p.id WHERE p.active AND i.enabled AND i.confirmed AND i.corp_id=$1 ORDER BY p.display_name,p.id',[config.dingtalk.corpId])).rows);
+      }
+      if (req.method === 'GET' && path === '/api/source-candidates') {
+        requireRole(actor,'admin');
+        const choices=[];
+        for (const group of source?.candidates ?? []) for (const versionId of group.versionIds) choices.push(await source.getVersion(group.projectId,versionId));
+        return json(res,200,choices);
+      }
       if (req.method === 'GET' && path === '/api/versions') {
-        const rows = await pool.query(`SELECT v.id,v.source_version_id AS "sourceVersionId",v.display_name AS "displayName",v.lifecycle,v.sync_start_at AS "syncStartAt",v.enrolled_at AS "enrolledAt",p.teambition_project_id AS "projectId",p.display_name AS "projectName",s.last_status AS "syncStatus",s.last_success_at AS "lastSuccessAt",s.last_error_code AS "lastErrorCode" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id LEFT JOIN source_sync_states s ON s.managed_version_id=v.id ORDER BY v.enrolled_at,v.id`);
+        const rows = await pool.query(`SELECT v.id,v.source_version_id AS "sourceVersionId",v.display_name AS "displayName",v.lifecycle,v.sync_start_at AS "syncStartAt",v.enrolled_at AS "enrolledAt",v.owner_id AS "ownerId",person.display_name AS "ownerName",p.teambition_project_id AS "projectId",p.display_name AS "projectName",s.last_status AS "syncStatus",s.last_success_at AS "lastSuccessAt",s.last_error_code AS "lastErrorCode",p.config_version AS "configVersion",b.verified_at AS "bindingVerifiedAt" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id LEFT JOIN people person ON person.id=v.owner_id LEFT JOIN source_sync_states s ON s.managed_version_id=v.id LEFT JOIN source_bindings b ON b.source_project_id=p.id ORDER BY v.enrolled_at,v.id`);
         return json(res,200,rows.rows);
       }
       if (req.method === 'POST' && path === '/api/versions') {
-        requireRole(actor,'owner');
+        requireRole(actor,'admin');
         const value = await body(req);
-        return json(res,201,await enrollVersion(pool,{corpId:config.dingtalk.corpId,projectId:value.projectId,projectName:value.projectName,versionId:value.versionId,versionName:value.versionName,ownerId:actor.id}));
+        if (Object.keys(value).some(k=>!['projectId','versionId','ownerId','reason'].includes(k)) || !/^[a-f0-9]{24}$/.test(value.projectId ?? '') || !/^[a-f0-9]{24}$/.test(value.versionId ?? '') || typeof value.reason!=='string' || !value.reason.trim() || value.reason.length>500) throw new Denied(400,'请核对项目、迭代和纳入原因');
+        if (!source) throw new Denied(503,'来源读取尚未配置');
+        const verified = await source.getVersion(value.projectId,value.versionId);
+        return json(res,201,await enrollVersion(pool,{...verified,corpId:config.dingtalk.corpId,ownerId:value.ownerId,reason:value.reason},actor.id));
       }
-      const syncTarget = path.match(/^\/api\/versions\/([0-9a-f-]+)\/sync$/i);
+      const taskTarget = path.match(/^\/api\/versions\/([0-9a-f-]{36})\/tasks$/i);
+      if (req.method === 'GET' && taskTarget) {
+        const offset = Number(url.searchParams.get('offset') ?? 0);
+        if (!Number.isSafeInteger(offset) || offset<0 || offset>10000) throw new Denied(400,'分页参数不合法');
+        if (!(await pool.query('SELECT 1 FROM managed_versions WHERE id=$1',[taskTarget[1]])).rowCount) throw new Denied(404,'版本不存在');
+        const total=(await pool.query('SELECT count(*)::int AS count FROM work_items WHERE managed_version_id=$1',[taskTarget[1]])).rows[0].count;
+        const rows=await pool.query(`SELECT w.source_task_id AS "sourceTaskId",w.visible_key AS "visibleKey",w.title,w.type_name AS "typeName",w.category,w.function_name AS "functionName",w.parent_source_task_id AS "parentSourceTaskId",parent.visible_key AS "parentVisibleKey",w.source_status_id AS "sourceStatusId",w.raw_status AS "rawStatus",w.availability,w.structure_issues AS "structureIssues",w.last_synced_at AS "lastSyncedAt" FROM work_items w LEFT JOIN work_items parent ON parent.managed_version_id=w.managed_version_id AND parent.source_task_id=w.parent_source_task_id WHERE w.managed_version_id=$1 ORDER BY w.source_task_id LIMIT 100 OFFSET $2`,[taskTarget[1],offset]);
+        return json(res,200,{items:rows.rows,total,nextOffset:offset+rows.rowCount<total ? offset+rows.rowCount : null});
+      }
+      const syncTarget = path.match(/^\/api\/versions\/([0-9a-f-]{36})\/sync$/i);
       if (req.method === 'POST' && syncTarget) {
         requireRole(actor,'admin');
-        if (typeof config.sourceReader !== 'function') throw new Denied(503,'来源读取尚未配置');
-        return json(res,200,await syncVersion(pool,syncTarget[1],()=>config.sourceReader(syncTarget[1])));
+        const value=await body(req);
+        if (Object.keys(value).some(k=>k!=='reason')) throw new Denied(400,'同步字段不合法');
+        if (!source) throw new Denied(503,'来源读取尚未配置');
+        return json(res,200,await syncVersion(pool,syncTarget[1],binding=>{
+          if (binding.corpId!==config.dingtalk.corpId) throw new Error('来源企业不匹配');
+          return source.read(binding);
+        },{actorId:actor.id,reason:value.reason}));
       }
       if (req.method === 'POST' && path === '/auth/logout') {
         await logout(pool,jar.vpm_session); res.setHeader('Set-Cookie',cookie(config,'vpm_session','',0)); return json(res,200,{ok:true});
