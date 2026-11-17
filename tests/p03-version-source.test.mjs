@@ -112,13 +112,22 @@ test('P03 structured function overrides title; only core subtasks require functi
   assert.equal(missing.functionName,null);
   assert.equal(missing.availability,'incomplete');
   assert.deepEqual(missing.structureIssues,['missing_function']);
-  const source = {id:'filled',content:'【KGUI】测试',sfcId:'core',tfsName:'待处理',customfields:[{cfId:'function-field',value:[{title:'策划'}]}]};
+  const source = {id:'filled',content:'【KGUI】测试',sfcId:'core',tfsName:'待处理',customfields:[{cfId:'function-field',value:[{title:'UI界面'}]}]};
   const filled = normalizeWorkItem(mapTeambitionTask(source,fields));
-  assert.equal(filled.functionName,'策划');
+  assert.equal(filled.functionName,'UI界面');
+  assert.equal(filled.functionResolution,'confirmed');
   assert.deepEqual(filled.rawSource,source);
   assert.deepEqual(filled.structureIssues,[]);
   const optional = normalizeWorkItem(mapTeambitionTask({id:'optional',content:'优化任务',sfcId:'task',tfsName:'待处理',customfields:[]},fields));
   assert.deepEqual(optional.structureIssues,[]);
+});
+
+test('P03 legacy and unknown function values stay raw and require configuration',()=>{
+ const fields={function:'function-field',typeNames:{core:'子需求'}};
+ const legacy=normalizeWorkItem(mapTeambitionTask({id:'legacy',content:'UI旧值',sfcId:'core',tfsName:'待处理',customfields:[{cfId:'function-field',value:[{title:'UI'}]}]},fields));
+ assert.equal(legacy.functionName,'UI');assert.equal(legacy.functionResolution,'legacy_unresolved');assert.deepEqual(legacy.structureIssues,['legacy_function_unresolved']);
+ const unknown=normalizeWorkItem(mapTeambitionTask({id:'unknown-function',content:'旧值',sfcId:'core',tfsName:'待处理',customfields:[{cfId:'function-field',value:[{title:'策划'}]}]},fields));
+ assert.equal(unknown.functionName,'策划');assert.equal(unknown.functionResolution,'unrecognized');assert.deepEqual(unknown.structureIssues,['unknown_function_value']);
 });
 
 test('P03 unknown type makes configuration issue visible despite known status', () => {

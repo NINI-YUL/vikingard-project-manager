@@ -1,3 +1,4 @@
+import {resolveFunction} from './function-catalog.mjs';
 import { randomUUID } from 'node:crypto';
 import { transaction } from './database.mjs';
 import {validateHistory,persistHistory} from './source-history.mjs';
@@ -18,6 +19,8 @@ export function normalizeWorkItem(input, knownIds = new Set()) {
   if (!sourceTaskId) issues.push('missing_source_task_id');
   if (!title) issues.push('missing_title');
   const parent = text(input?.parentSourceTaskId, 200);
+  const functionState=resolveFunction(input?.functionName);
+  if(functionState.issue)issues.push(functionState.issue);
   if (parent && parent === sourceTaskId) issues.push('self_parent');
   if (parent && parent !== sourceTaskId && !knownIds.has(parent)) issues.push('parent_missing');
   issues.push(...list(input?.structureIssues));
@@ -27,7 +30,7 @@ export function normalizeWorkItem(input, knownIds = new Set()) {
     plannedStartAt:input?.plannedStartAt ?? null,plannedDueAt:input?.plannedDueAt ?? null,sourceCompletedAt:input?.sourceCompletedAt ?? null,isDone:input?.isDone ?? null,
     visibleKey: text(input?.visibleKey, 200), title: title ?? '未识别标题',
     typeId: text(input?.typeId, 200), typeName: text(input?.typeName, 200),
-    category: text(input?.category, 200), functionName: text(input?.functionName, 200),
+    category: text(input?.category, 200), functionName: text(input?.functionName, 200), functionResolution: input?.functionResolution ?? functionState.resolution,
     parentSourceTaskId: parent, parentMissing: issues.includes('parent_missing'),
     sourceStatusId: text(input?.sourceStatusId,200), rawStatus: text(input?.status,200),
     availability: issues.length ? 'incomplete' : (input?.typeName || input?.category || input?.functionName || input?.status ? 'available' : 'unknown'),
@@ -121,14 +124,14 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
     }
     if (snapshot.binding) {
       const b = snapshot.binding;
-      await client.query(`UPDATE source_projects SET config_version=config_version+1 WHERE id=$1 AND EXISTS (SELECT 1 FROM source_bindings WHERE source_project_id=$1 AND (organization_id,category_field_id,function_field_id,type_names,status_names) IS DISTINCT FROM ($2,$3,$4,$5::jsonb,$6::jsonb))`,[version.source_project_id,b.organizationId,b.categoryFieldId,b.functionFieldId,b.typeNames,b.statusNames]);
-      await client.query(`INSERT INTO source_bindings(source_project_id,organization_id,category_field_id,function_field_id,type_names,status_names) VALUES($1,$2,$3,$4,$5,$6)
-        ON CONFLICT(source_project_id) DO UPDATE SET organization_id=EXCLUDED.organization_id,category_field_id=EXCLUDED.category_field_id,function_field_id=EXCLUDED.function_field_id,type_names=EXCLUDED.type_names,status_names=EXCLUDED.status_names,verified_at=now()`,[version.source_project_id,b.organizationId,b.categoryFieldId,b.functionFieldId,b.typeNames,b.statusNames]);
+      await client.query(`UPDATE source_projects SET config_version=config_version+1 WHERE id=$1 AND EXISTS (SELECT 1 FROM source_bindings WHERE source_project_id=$1 AND (organization_id,category_field_id,function_field_id,type_names,status_names,function_options) IS DISTINCT FROM ($2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb))`,[version.source_project_id,b.organizationId,b.categoryFieldId,b.functionFieldId,b.typeNames,b.statusNames,JSON.stringify(b.functionOptions ?? [])]);
+      await client.query(`INSERT INTO source_bindings(source_project_id,organization_id,category_field_id,function_field_id,type_names,status_names,function_options) VALUES($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT(source_project_id) DO UPDATE SET organization_id=EXCLUDED.organization_id,category_field_id=EXCLUDED.category_field_id,function_field_id=EXCLUDED.function_field_id,type_names=EXCLUDED.type_names,status_names=EXCLUDED.status_names,function_options=EXCLUDED.function_options,verified_at=now()`,[version.source_project_id,b.organizationId,b.categoryFieldId,b.functionFieldId,b.typeNames,b.statusNames,JSON.stringify(b.functionOptions ?? [])]);
     }
     if(snapshot.binding?.statusDefinitions)await client.query('UPDATE source_bindings SET status_definitions=$2 WHERE source_project_id=$1',[version.source_project_id,JSON.stringify(snapshot.binding.statusDefinitions)]);
-    for (const item of items) await client.query(`INSERT INTO work_items(id,managed_version_id,source_task_id,visible_key,title,type_id,type_name,category,function_name,parent_source_task_id,parent_missing,source_status_id,raw_status,availability,structure_issues,source_updated_at,last_synced_at,raw_source)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now(),$17)
-      ON CONFLICT(managed_version_id,source_task_id) DO UPDATE SET visible_key=EXCLUDED.visible_key,title=EXCLUDED.title,type_id=EXCLUDED.type_id,type_name=EXCLUDED.type_name,category=EXCLUDED.category,function_name=EXCLUDED.function_name,parent_source_task_id=EXCLUDED.parent_source_task_id,parent_missing=EXCLUDED.parent_missing,source_status_id=EXCLUDED.source_status_id,raw_status=EXCLUDED.raw_status,availability=EXCLUDED.availability,structure_issues=EXCLUDED.structure_issues,source_updated_at=EXCLUDED.source_updated_at,last_synced_at=now(),raw_source=EXCLUDED.raw_source`,[randomUUID(),versionId,item.sourceTaskId,item.visibleKey,item.title,item.typeId,item.typeName,item.category,item.functionName,item.parentSourceTaskId,item.parentMissing,item.sourceStatusId,item.rawStatus,item.availability,JSON.stringify(item.structureIssues),item.sourceUpdatedAt,JSON.stringify(item.rawSource)]);
+    for (const item of items) await client.query(`INSERT INTO work_items(id,managed_version_id,source_task_id,visible_key,title,type_id,type_name,category,function_name,function_resolution,parent_source_task_id,parent_missing,source_status_id,raw_status,availability,structure_issues,source_updated_at,last_synced_at,raw_source)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,now(),$18)
+      ON CONFLICT(managed_version_id,source_task_id) DO UPDATE SET visible_key=EXCLUDED.visible_key,title=EXCLUDED.title,type_id=EXCLUDED.type_id,type_name=EXCLUDED.type_name,category=EXCLUDED.category,function_name=EXCLUDED.function_name,function_resolution=EXCLUDED.function_resolution,parent_source_task_id=EXCLUDED.parent_source_task_id,parent_missing=EXCLUDED.parent_missing,source_status_id=EXCLUDED.source_status_id,raw_status=EXCLUDED.raw_status,availability=EXCLUDED.availability,structure_issues=EXCLUDED.structure_issues,source_updated_at=EXCLUDED.source_updated_at,last_synced_at=now(),raw_source=EXCLUDED.raw_source`,[randomUUID(),versionId,item.sourceTaskId,item.visibleKey,item.title,item.typeId,item.typeName,item.category,item.functionName,item.functionResolution,item.parentSourceTaskId,item.parentMissing,item.sourceStatusId,item.rawStatus,item.availability,JSON.stringify(item.structureIssues),item.sourceUpdatedAt,JSON.stringify(item.rawSource)]);
     await persistHistory(client,version,items,snapshot);
     await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,imported_count) VALUES($1,$2,$3,now(),'succeeded',$4)",[runId,versionId,startedAt,items.length]);
     await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_success_at=now(),last_status='succeeded',last_error_code=NULL,last_error_detail=NULL WHERE managed_version_id=$1",[versionId,startedAt]);
@@ -156,6 +159,7 @@ export function mapTeambitionTask(task, fieldMap = {}) {
     structureIssues:[
       ...(!typeName ? ['unknown_task_type'] : []),
       ...(typeName==='子需求' && !functionName ? ['missing_function'] : []),
+      ...(functionName && resolveFunction(functionName).issue ? [resolveFunction(functionName).issue] : []),
       ...(!statusName ? ['unknown_status'] : []),
       ...(!Array.isArray(task?.customfields) ? ['customfields_missing'] : [])
     ],rawSource:task

@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isAbsolute } from 'node:path';
+import { resolveFunction } from './function-catalog.mjs';
 import { createTeambitionSourceReader } from './version-source.mjs';
 
 const execute = promisify(execFile);
@@ -80,6 +81,8 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
         const matches = definitions.filter(f => (f.id ?? f._id) === fieldId);
         if (matches.length !== 1 || matches[0].name !== name || matches[0].type !== 'dropDown') throw new Error('来源字段绑定不匹配');
       }
+      const functionDefinition=definitions.find(f=>(f.id??f._id)===config.functionFieldId);
+      const functionOptions=Array.isArray(functionDefinition?.choices)?functionDefinition.choices.map(choice=>typeof choice==='string'?choice:choice.value).filter(value=>typeof value==='string'):[];
       const fieldMap = {category:config.categoryFieldId,function:config.functionFieldId,typeNames,statusNames};
       const read = createTeambitionSourceReader({projectId,versionId:sourceVersionId,fieldMap,listTasks:({pageSize,pageToken}) => query('task-query',[
         ...args,'--tql',`sprintId = '${sourceVersionId}' AND isArchived = false ORDER BY updated DESC`,'--page-size',String(pageSize),
@@ -110,7 +113,7 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
           cursors.add(pageToken);
         }
       }
-      return {...snapshot,reconciliations,activities,binding:{organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,typeNames,statusNames,statusDefinitions:statuses.map(status=>({id:status.id??status._id,name:status.name,workflowId:status.workflowId,workflowName:workflowNames[status.workflowId]}))}};
+      return {...snapshot,reconciliations,activities,binding:{organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,functionOptions,typeNames,statusNames,statusDefinitions:statuses.map(status=>({id:status.id??status._id,name:status.name,workflowId:status.workflowId,workflowName:workflowNames[status.workflowId]}))}};
     }
   };
 }

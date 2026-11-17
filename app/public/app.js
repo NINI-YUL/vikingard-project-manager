@@ -61,7 +61,7 @@ async function tasks(version,offset=0){
   $('tasks-panel').hidden=false;$('tasks-heading').textContent=version.displayName+' · 任务快照';
   $('task-count').textContent='共 '+data.total+' 张，本页 '+data.items.length+' 张。';$('tasks').replaceChildren();
   for(const item of data.items){const row=document.createElement('tr');
-    cell(row,item.visibleKey);cell(row,item.title);cell(row,item.typeName);cell(row,item.category);cell(row,item.functionName);
+    cell(row,item.visibleKey);cell(row,item.title);cell(row,item.typeName);cell(row,item.category);cell(row,item.functionName ? item.functionName+(item.functionResolution==='confirmed'?'':'（待配置）') : (item.functionResolution==='missing'?'未填写':'职能待配置'));
     cell(row,item.parentVisibleKey ?? (item.parentSourceTaskId?'父任务未纳入':'无'));
     cell(row,item.rawStatus);cell(row,presenceNames[item.sourcePresence]??'待核对');cell(row,item.structureIssues.length?item.structureIssues.map(i=>issueNames[i] ?? i).join('；'):(item.availability==='unknown'?'待识别':'已通过当前结构检查'));
     cell(row,'').append(button('查看历史',()=>history(version,item)));

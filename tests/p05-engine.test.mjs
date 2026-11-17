@@ -3,10 +3,10 @@ import {effectiveRules,validateRules,validateEffective,validDay,workingDays,coll
 const maps={pending:{semantic:'not_started',markers:[]},dev:{semantic:'developing',markers:['development_start']},devEnd:{semantic:'processing',markers:['development_end']},test:{semantic:'testing',markers:['test_start']},testEnd:{semantic:'processing',markers:['test_end']},paused:{semantic:'paused',markers:[]},processing:{semantic:'processing',markers:[]},done:{semantic:'delivered',markers:[]},cancel:{semantic:'non_delivery',markers:[]}};
 const item=(id,type,parent=null,extra={})=>({id,managed_version_id:'v1',source_task_id:id,type_name:type,parent_source_task_id:parent,source_presence:'current',structure_issues:[],source_status_id:'done',...extra});
 test('P05 inheritance resolves each field, restores upstream and rejects combined overlap',()=>{
- const system={scope:'system',values:{foundation:['UI'],detail:['后台'],concurrency:4}};
+ const system={scope:'system',values:{foundation:['UI界面'],detail:['后台'],concurrency:4}};
  const version={scope:'version',values:{detail:['动效']}};const requirement={scope:'requirement',values:{foundation:['客户端']}};
  let rules=effectiveRules([system,version,requirement]);assert.deepEqual(rules.foundation,{value:['客户端'],source:'requirement'});assert.equal(rules.detail.source,'version');assert.equal(rules.concurrency.source,'system');
- rules=effectiveRules([system,version]);assert.deepEqual(rules.foundation.value,['UI']);assert.equal(rules.foundation.source,'system');
+ rules=effectiveRules([system,version]);assert.deepEqual(rules.foundation.value,['UI界面']);assert.equal(rules.foundation.source,'system');
  assert.throws(()=>validateRules({concurrency:5},'version'));assert.throws(()=>validateRules({schedules:[{day:2,time:'25:00'}]},'system'));assert.throws(()=>validateRules({schedules:[{day:2,time:'10:00'},{day:2,time:'10:00'}]},'system'));
  assert.throws(()=>validateEffective(effectiveRules([{scope:'version',values:{foundation:['后台']}}])));validateEffective(rules);
 });
@@ -18,9 +18,9 @@ test('P05 calendar uses Shanghai dates, special workdays and no non-workday catc
  assert.equal(collectionDue('2026-11-18T02:00:00Z',schedule),false);
 });
 test('P05 stages require every selected function, check all descendants and roll back on reopen',()=>{
- const root=item('r','需求',null,{source_status_id:'pending'}),ui1=item('ui1','子需求','r',{function_name:'UI'}),ui2=item('ui2','子需求','r',{function_name:'UI'}),testRoot=item('t','测试任务','r'),defect=item('bug','缺陷','t');
- const items=[root,ui1,ui2,testRoot,defect];const rules=effectiveRules([{scope:'system',values:{foundation:['UI'],detail:['后台']}}]);
- let result=stages(root,items,rules,maps);assert.equal(result.foundation.complete,true);assert.equal(result.detail.complete,false);assert.deepEqual(result.detail.missingFunctions,['后台']);assert.equal(result.test.complete,true);
+ const root=item('r','需求',null,{source_status_id:'pending'}),ui1=item('ui1','子需求','r',{function_name:'UI界面'}),ui2=item('ui2','子需求','r',{function_name:'UI'}),testRoot=item('t','测试任务','r'),defect=item('bug','缺陷','t');
+ const items=[root,ui1,ui2,testRoot,defect];const rules=effectiveRules([{scope:'system',values:{foundation:['UI界面'],detail:['后台']}}]);
+ let result=stages(root,items,rules,maps);assert.equal(result.foundation.complete,false);assert.equal(result.foundation.structureUnknown,true);ui2.function_name='UI界面';result=stages(root,items,rules,maps);assert.equal(result.foundation.complete,true);assert.equal(result.detail.complete,false);assert.deepEqual(result.detail.missingFunctions,['后台']);assert.equal(result.test.complete,true);
  result=stages(root,items,rules,maps,['后台']);assert.equal(result.detail.complete,true);
  ui2.source_status_id='dev';result=stages(root,items,rules,maps,['后台']);assert.equal(result.foundation.complete,false);assert.equal(result.detail.complete,false);assert.equal(result.test.complete,false);
  ui2.source_status_id='done';defect.source_status_id='cancel';result=stages(root,items,rules,maps,['后台']);assert.equal(result.test.complete,true);assert.equal(result.deliveredCount,3);assert.equal(result.nonDeliveryCount,1);
@@ -50,3 +50,11 @@ test('P05 concurrency joins actual source executor across active versions with o
 });
 
 test('P05 version progress weights requirements equally and never turns unknown coverage into zero',()=>{const stage=(complete,calculable=true)=>({complete,calculable});const roots=[{stages:{foundation:stage(true),detail:stage(true),test:stage(true)}},{stages:{foundation:stage(false),detail:stage(false,false),test:stage(false)}}];const progress=versionProgress(roots,[]);assert.equal(progress.foundation.percent,50);assert.equal(progress.detail.percent,null);assert.equal(progress.detail.unknown,1);assert.equal(versionProgress([],[]).test.percent,null);});
+
+test('P05 nine functions keep cumulative stages and preserve unresolved legacy rules',()=>{
+ const rules=effectiveRules([]);assert.deepEqual(rules.foundation.value,['UI界面','美术','数值','客户端','服务端','KGUI']);assert.deepEqual(rules.detail.value,['UI图标','动效','后台']);
+ const root=item('r','需求'),children=[...rules.foundation.value,...rules.detail.value].map(f=>item(f,'子需求','r',{function_name:f}));
+ assert.equal(stages(root,[root,...children],rules,maps).detail.complete,true);
+ children.find(i=>i.function_name==='UI界面').source_status_id='dev';const result=stages(root,[root,...children],rules,maps);assert.equal(result.foundation.complete,false);assert.equal(result.detail.complete,false);
+ const legacy=effectiveRules([{scope:'system',values:{foundation:['UI'],detail:[]}}]);assert.deepEqual(legacy.foundation.value,['UI']);assert.equal(stages(root,[root],legacy,maps,['UI']).foundation.calculable,false);assert.throws(()=>validateRules({foundation:['UI']},'system'));
+});

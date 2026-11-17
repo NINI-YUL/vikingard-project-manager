@@ -1,7 +1,9 @@
-export const functions=['UI','美术','动效','数值','客户端','服务端','KGUI','后台'];
+import {functions,foundationFunctions,detailFunctions} from './function-catalog.mjs';
+export {functions};
+
 export const semantics={not_started:'未开始',developing:'开发中',testing:'测试中',processing:'处理中，但不计时',paused:'暂停',delivered:'交付完成',non_delivery:'非交付终态'};
 export const markers=['development_start','development_end','test_start','test_end'];
-export const defaults={foundation:['UI','美术','数值','客户端','服务端','KGUI'],detail:['动效','后台'],schedules:[{day:2,time:'10:00'},{day:4,time:'10:00'}],concurrency:3};
+export const defaults={foundation:[...foundationFunctions],detail:[...detailFunctions],schedules:[{day:2,time:'10:00'},{day:4,time:'10:00'}],concurrency:3};
 export function effectiveRules(layers){
   const result=Object.fromEntries(Object.entries(defaults).map(([key,value])=>[key,{value:structuredClone(value),source:'system'}]));
   for(const {scope,values} of layers)for(const [key,value] of Object.entries(values))result[key]={value:structuredClone(value),source:scope};
@@ -45,7 +47,7 @@ export function stages(root,items,rules,mappings,exemptions=[]){
   const eligible=i=>i.source_presence==='current'&&objectKind(i,bySource)!=='unknown'&&!i.structure_issues?.length&&Boolean(mappings[i.source_status_id]);
   const professional=children.filter(i=>objectKind(i,bySource)==='professional');
   const unassigned=items.some(i=>i.source_presence==='current'&&i.parent_source_task_id&&!bySource.has(i.parent_source_task_id));
-  const invalidStructure=Boolean(root.structure_issues?.length)||unassigned||children.some(i=>objectKind(i,bySource)==='unknown'||(i.type_name==='子需求'&&!functions.includes(i.function_name)));
+  const invalidStructure=[...rules.foundation.value,...rules.detail.value].some(f=>!functions.includes(f))||Boolean(root.structure_issues?.length)||unassigned||children.some(i=>objectKind(i,bySource)==='unknown'||(i.type_name==='子需求'&&!functions.includes(i.function_name)));
   const rootBlocked=root.source_presence!=='current'||!Object.hasOwn(mappings,root.source_status_id)||Boolean(root.structure_issues?.length);
   function selected(names){const missing=[],blocked=rootBlocked?[root.source_task_id]:[];let unknown=rootBlocked||invalidStructure;for(const f of names){const members=professional.filter(i=>i.function_name===f);if(!members.length){if(!exemptions.includes(f)){missing.push(f);unknown=true;}}else for(const i of members)if(!eligible(i)||!terminal(mappings[i.source_status_id]?.semantic)){blocked.push(i.source_task_id);if(!eligible(i))unknown=true;}}
     return {calculable:!unknown,complete:root.source_presence==='current'&&Boolean(mappings[root.source_status_id])&&!invalidStructure&&!missing.length&&!blocked.length,missingFunctions:missing,blockedTaskIds:blocked,structureUnknown:invalidStructure};}
