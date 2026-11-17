@@ -118,6 +118,7 @@ try{
       pollingEnabled=(await api('/api/status')).pollingEnabled;$('versions-section').hidden=false;await versions();
       if(actor.role==='owner'){$('management').hidden=false;await people();}
       if(['admin','owner'].includes(actor.role)){$('audit-section').hidden=false;await audit();try{await candidates();}catch{message('来源候选读取失败，已保存的版本和任务仍可查看。');}}
+      try{const {setupManagement}=await import('/management-ui.js');await setupManagement(actor,api);}catch{message('规则与阶段区域加载失败，可刷新重试；其他功能仍可使用。');}
     }else{$('login').hidden=false;const code=new URL(location.href).searchParams.get('login');message(code==='403'?'当前钉钉身份未获授权，或企业身份验证未通过。':code?'登录失败，请重新发起或联系管理员。':'请使用已明确授权的钉钉账号登录。');}
   }
 }catch{message('服务暂不可用，请联系管理员检查数据库及配置。');}

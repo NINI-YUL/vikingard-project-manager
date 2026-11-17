@@ -71,7 +71,7 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
       const workflowIds = [...new Set(types.map(t=>t._taskflowId ?? t.taskflowId))];
       if (!workflowIds.length || !workflowIds.every(id)) throw new Error('任务类型缺少工作流绑定');
       const statuses = [];
-      for (const workflowId of workflowIds) statuses.push(...rows(await query('tfs-query',[...args,'--taskflow-id',workflowId])));
+      for (const workflowId of workflowIds) statuses.push(...rows(await query('tfs-query',[...args,'--taskflow-id',workflowId])).map(status=>({...status,workflowId})));
       const statusNames = names(statuses);
       const definitions = rows(await query('customfield-query',[...args,'--id',config.categoryFieldId+','+config.functionFieldId]));
       for (const [fieldId,name] of [[config.categoryFieldId,'工单分类'],[config.functionFieldId,'职能']]) {
@@ -108,7 +108,7 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
           cursors.add(pageToken);
         }
       }
-      return {...snapshot,reconciliations,activities,binding:{organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,typeNames,statusNames}};
+      return {...snapshot,reconciliations,activities,binding:{organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,typeNames,statusNames,statusDefinitions:statuses.map(status=>({id:status.id??status._id,name:status.name,workflowId:status.workflowId}))}};
     }
   };
 }
