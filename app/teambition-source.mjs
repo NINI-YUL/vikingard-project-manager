@@ -5,7 +5,7 @@ import { createTeambitionSourceReader } from './version-source.mjs';
 
 const execute = promisify(execFile);
 const id = value => typeof value === 'string' && /^[a-f0-9]{24}$/.test(value);
-const actions = new Map(['query','sprint-query','sfc-query','customfield-query','tfs-query','task-query'].map(action=>[action,['project',action]]));
+const actions = new Map(['query','sprint-query','sfc-query','customfield-query','taskflow-query','tfs-query','task-query'].map(action=>[action,['project',action]]));
 actions.set('task-detail',['task','query']);
 actions.set('task-activity',['task','activity']);
 export function validateTeambitionConfig(value) {
@@ -70,6 +70,8 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
       const typeNames = names(types);
       const workflowIds = [...new Set(types.map(t=>t._taskflowId ?? t.taskflowId))];
       if (!workflowIds.length || !workflowIds.every(id)) throw new Error('任务类型缺少工作流绑定');
+      const workflowNames=names(rows(await query('taskflow-query',[...args,'--id',workflowIds.join(',')])));
+      if(workflowIds.some(id=>!Object.hasOwn(workflowNames,id)))throw new Error('工作流名称定义不完整');
       const statuses = [];
       for (const workflowId of workflowIds) statuses.push(...rows(await query('tfs-query',[...args,'--taskflow-id',workflowId])).map(status=>({...status,workflowId})));
       const statusNames = names(statuses);
@@ -108,7 +110,7 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
           cursors.add(pageToken);
         }
       }
-      return {...snapshot,reconciliations,activities,binding:{organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,typeNames,statusNames,statusDefinitions:statuses.map(status=>({id:status.id??status._id,name:status.name,workflowId:status.workflowId}))}};
+      return {...snapshot,reconciliations,activities,binding:{organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,typeNames,statusNames,statusDefinitions:statuses.map(status=>({id:status.id??status._id,name:status.name,workflowId:status.workflowId,workflowName:workflowNames[status.workflowId]}))}};
     }
   };
 }

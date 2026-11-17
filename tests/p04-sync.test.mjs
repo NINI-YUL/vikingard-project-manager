@@ -12,7 +12,7 @@ const org='a'.repeat(24),project='b'.repeat(24),version='c'.repeat(24),category=
 const config={cliPath:'C:/fake/teambition-cli.exe',organizationId:org,projectId:project,versionIds:[version],categoryFieldId:category,functionFieldId:fn};
 function query(overrides={}){return async(action,args)=>{
  if(overrides[action])return overrides[action](args);
- const data={query:[{id:project,organizationId:org,name:'测试项目'}],'sprint-query':[{id:version,projectId:project,name:'受控版本'}],'sfc-query':[{_id:type,name:'任务',_taskflowId:'2'.repeat(24)}],'tfs-query':[{id:status,name:'待处理'}],'customfield-query':[{_id:category,name:'工单分类',type:'dropDown'},{_id:fn,name:'职能',type:'dropDown'}],'task-query':[{id:task,projectId:project,sprintId:version,isArchived:false,sfcId:type,tfsId:status,content:'测试',customfields:[]}],'task-activity':[]};
+ const data={query:[{id:project,organizationId:org,name:'测试项目'}],'sprint-query':[{id:version,projectId:project,name:'受控版本'}],'sfc-query':[{_id:type,name:'任务',_taskflowId:'2'.repeat(24)}],'taskflow-query':[{id:'2'.repeat(24),name:'子需求中文工作流'}],'tfs-query':[{id:status,name:'待处理'}],'customfield-query':[{_id:category,name:'工单分类',type:'dropDown'},{_id:fn,name:'职能',type:'dropDown'}],'task-query':[{id:task,projectId:project,sprintId:version,isArchived:false,sfcId:type,tfsId:status,content:'测试',customfields:[]}],'task-activity':[]};
  return {result:data[action],nextPageToken:''};
 };}
 test('P04 missing task reconciliation distinguishes explicit evidence without inferring deletion',async()=>{
