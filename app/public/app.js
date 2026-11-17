@@ -92,10 +92,15 @@ $('refresh-versions').onclick=async()=>{try{await versions();if(selectedVersion)
 $('tasks-prev').onclick=()=>tasks(selectedVersion,Math.max(0,taskOffset-100)).catch(error=>message(error.message));
 $('tasks-next').onclick=()=>{if(nextTaskOffset!==null)tasks(selectedVersion,nextTaskOffset).catch(error=>message(error.message));};
 $('enroll-version').onsubmit=async event=>{
-  event.preventDefault();const submit=event.target.querySelector('button');submit.disabled=true;
-  try{const option=$('source-candidate').selectedOptions[0];await api('/api/versions','POST',{projectId:option.dataset.project,versionId:option.value,ownerId:$('version-owner').value,reason:$('enroll-reason').value});
-    message('版本及负责人已确认；点击读取来源并同步，获取首次任务快照。');await versions();await audit();
-  }catch(error){message(error.message);}finally{submit.disabled=false;}
+  event.preventDefault();const submit=event.target.querySelector('button'),feedback=$('enroll-feedback');submit.disabled=true;
+  const report=text=>{feedback.textContent=text;message(text);};
+  report('正在核对来源并保存负责人，请等待结果。');
+  try{const option=$('source-candidate').selectedOptions[0],owner=$('version-owner').selectedOptions[0];
+    await api('/api/versions','POST',{projectId:option.dataset.project,versionId:option.value,ownerId:owner.value,reason:$('enroll-reason').value});
+    const saved='确认成功：'+option.textContent+'；版本负责人：'+owner.textContent+'。';
+    report(saved+(pollingEnabled?'自动同步将在调度检查后执行，可稍后刷新查看结果。':'可点击“读取来源并同步”更新任务快照。'));
+    try{await versions();await audit();}catch{report(saved+'列表或审计刷新失败，请点击“刷新版本列表”或“刷新审计”；无需重复确认。');}
+  }catch(error){report('确认未完成：'+error.message+'。请核对页面中的版本和负责人；若请求中断，请先刷新列表核对保存结果。');}finally{submit.disabled=false;}
 };
 async function candidates(){
   const choices=await api('/api/source-candidates');$('source-candidate').replaceChildren();
