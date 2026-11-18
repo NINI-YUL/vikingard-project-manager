@@ -59,3 +59,8 @@
 2026-11-18 只读核对 Windows 任务及原报告：2026-11-17 21:00:03 +08:00 自然运行，21:00:07 完成，任务结果 0，状态 success，scheduledInvocation=true，restoreVerified=true，exactSnapshotRowsMatched=true；本机和共享目录备份文件 SHA256 均与报告一致；本次恢复测试库已按既定成功后清理规则移除。
 
 这补齐一次 21:00 自然运行证据，不表示新增 P06 表已经完成备份恢复实测，也不表示 NAS ACL、异机全套恢复、保留期限或容量上限已核对。备份任务仍每日北京时间 21:00，目录和脚本位置不变。
+## Git 交付
+
+代码提交 `9605dd819a6ea585abd9e59dac0e405aa7246e36` 已推送到 `origin/codex/p06-feedback-current`。PR 以草稿提交，目标 main，真实反馈联验及用户人工验收完成前不自动合并。提交后的迁移文件已核对与本机应用文件、业务库记录的 SHA256 校验值一致。
+
+差异检查使用 `git -c core.whitespace=trailing-space,space-before-tab,cr-at-eol diff origin/main...HEAD --check`，保留 Windows CRLF 的合法行尾，继续检查实际行尾空格与缩进问题；没有改写已应用迁移。
