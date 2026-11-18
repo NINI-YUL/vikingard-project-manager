@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {effectiveRules,validateRules,validateEffective,validDay,workingDays,collectionDue,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency} from '../app/management-engine.mjs';
+import {effectiveRules,validateRules,validateEffective,validDay,workingDays,collectionDue,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency,durationDays} from '../app/management-engine.mjs';
 const maps={pending:{semantic:'not_started',markers:[]},dev:{semantic:'developing',markers:['development_start']},devEnd:{semantic:'processing',markers:['development_end']},test:{semantic:'testing',markers:['test_start']},testEnd:{semantic:'processing',markers:['test_end']},paused:{semantic:'paused',markers:[]},processing:{semantic:'processing',markers:[]},done:{semantic:'delivered',markers:[]},cancel:{semantic:'non_delivery',markers:[]}};
 const item=(id,type,parent=null,extra={})=>({id,managed_version_id:'v1',source_task_id:id,type_name:type,parent_source_task_id:parent,source_presence:'current',structure_issues:[],source_status_id:'done',...extra});
 test('P05 inheritance resolves each field, restores upstream and rejects combined overlap',()=>{
@@ -35,9 +35,9 @@ test('P05 identifies acceptance by category/parent, never title; optimization co
 test('P05 actual timer uses source timestamps, excludes pauses, keeps rounds and unknown starts',()=>{
  const e=(day,statusId)=>({at:'2026-11-'+day+'T02:00:00Z',statusId});const options={syncStartAt:'2026-11-01T00:00:00Z',now:new Date('2026-11-20T03:00:00Z')};
  const result=timing([e('16','dev'),e('17','paused'),e('18','dev'),e('19','devEnd'),e('20','test'),e('20','testEnd')],maps,options);
- assert.equal(timing([e('16','dev'),e('17','processing'),e('18','dev'),e('19','devEnd')],maps,options).development.workingDays,3);
- assert.equal(result.development.workingDays,3);assert.equal(result.test.workingDays,1);
- const rounds=timing([e('16','test'),e('17','testEnd'),e('18','testEnd'),e('19','test'),e('20','testEnd')],maps,options);assert.equal(rounds.test.rounds.length,2);assert.equal(rounds.test.workingDays,4);
+ assert.equal(timing([e('16','dev'),e('17','processing'),e('18','dev'),e('19','devEnd')],maps,options).development.workingDays,2);
+ assert.equal(result.development.workingDays,2);assert.equal(result.test.workingDays,0);
+ const rounds=timing([e('16','test'),e('17','testEnd'),e('18','testEnd'),e('19','test'),e('20','testEnd')],maps,options);assert.equal(rounds.test.rounds.length,2);assert.equal(rounds.test.workingDays,2);
  const gap=timing([{...e('16','dev'),fromStatusId:'pending'},{...e('18','devEnd'),fromStatusId:'paused'}],maps,options);assert.equal(gap.development.workingDays,null);
  assert.equal(timing([e('16','dev'),e('17','cancel')],maps,options).development.workingDays,null);
  assert.equal(timing([e('17','testEnd')],maps,options).test.workingDays,null);assert.equal(timing([],maps,options).development.workingDays,null);
@@ -57,4 +57,11 @@ test('P05 nine functions keep cumulative stages and preserve unresolved legacy r
  assert.equal(stages(root,[root,...children],rules,maps).detail.complete,true);
  children.find(i=>i.function_name==='UI界面').source_status_id='dev';const result=stages(root,[root,...children],rules,maps);assert.equal(result.foundation.complete,false);assert.equal(result.detail.complete,false);
  const legacy=effectiveRules([{scope:'system',values:{foundation:['UI'],detail:[]}}]);assert.deepEqual(legacy.foundation.value,['UI']);assert.equal(stages(root,[root],legacy,maps,['UI']).foundation.calculable,false);assert.throws(()=>validateRules({foundation:['UI']},'system'));
+});
+
+test('P05 duration uses Beijing work intervals, deduplicates same-day reopen and ceilings at 0.1 day',()=>{
+ const events=[{at:'2026-11-16T01:00:00Z',statusId:'dev'},{at:'2026-11-16T03:00:00Z',statusId:'devEnd'},{at:'2026-11-16T04:00:00Z',statusId:'dev'},{at:'2026-11-16T05:00:00Z',statusId:'devEnd'}];
+ const result=timing(events,maps,{syncStartAt:'2026-11-01T00:00:00Z',now:new Date('2026-11-20T00:00:00Z')});assert.equal(result.development.hours,2);assert.equal(result.development.workingDays,0.3);
+ const overtime={ '2026-11-15':{working:true,intervals:[{start:'14:00',end:'15:00'}]} };const weekend=timing([{at:'2026-11-15T06:00:00Z',statusId:'dev'},{at:'2026-11-15T07:00:00Z',statusId:'devEnd'}],maps,{syncStartAt:'2026-11-01T00:00:00Z',now:new Date('2026-11-20T00:00:00Z'),calendar:overtime});assert.equal(weekend.development.hours,1);assert.equal(weekend.development.workingDays,0.2);
+ assert.equal(durationDays(8.475),1.2);assert.equal(durationDays(0),0);assert.throws(()=>durationDays(-1));
 });
