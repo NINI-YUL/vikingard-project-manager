@@ -1,0 +1,10 @@
+{
+  "pollingEnabled": false,
+  "pollIntervalSeconds": 900,
+  "cliPath": "C:/path/to/teambition-cli.exe",
+  "organizationId": "000000000000000000000001",
+  "projectId": "000000000000000000000002",
+  "versionIds": ["000000000000000000000003"],
+  "categoryFieldId": "000000000000000000000004",
+  "functionFieldId": "000000000000000000000005"
+}
