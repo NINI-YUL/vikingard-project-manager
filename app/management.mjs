@@ -1,18 +1,18 @@
 import {digest,transaction} from './database.mjs';
 import {Denied,requireRole,requireCurrentRole} from './security.mjs';
-import {functions,semantics,markers,defaults,effectiveRules,validateRules,validateEffective,validDay,workingDays,dayOf,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency} from './management-engine.mjs';
+import {functions,semantics,markers,defaults,effectiveRules,validateRules,validateEffective,validDay,workingDays,dayOf,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency,standardWorkIntervals} from './management-engine.mjs';
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
 const fail=text=>{throw new Denied(400,text);};
 const keys=(value,allowed)=>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!allowed.includes(k)))fail('配置字段不合法');};
 async function state(client){
   const queries=[
-    'SELECT revision FROM management_state WHERE id=1','SELECT * FROM management_rules',"SELECT to_char(day,'YYYY-MM-DD') AS day,working FROM calendar_days ORDER BY day",'SELECT * FROM status_mappings',
+    'SELECT revision FROM management_state WHERE id=1','SELECT * FROM management_rules',"SELECT to_char(day,'YYYY-MM-DD') AS day,working,intervals FROM calendar_days ORDER BY day",'SELECT * FROM status_mappings',
     'SELECT v.*,s.last_success_at,s.last_status FROM managed_versions v JOIN source_sync_states s ON s.managed_version_id=v.id',
     "SELECT w.* FROM work_items w JOIN managed_versions v ON v.id=w.managed_version_id WHERE v.lifecycle='enrolled'",
     'SELECT b.source_project_id,b.status_names,b.status_definitions,p.display_name FROM source_bindings b JOIN source_projects p ON p.id=b.source_project_id','SELECT * FROM function_exemptions','SELECT * FROM plan_baselines'];
   const results=[];for(const query of queries)results.push(await client.query(query));
   const [revision,rules,calendar,mappings,versions,items,bindings,exemptions,baselines]=results;
-  return {revision:revision.rows[0].revision,rules:rules.rows,calendar:Object.fromEntries(calendar.rows.map(r=>[r.day,r.working])),mappings:mappings.rows,versions:versions.rows,items:items.rows,bindings:bindings.rows,exemptions:exemptions.rows,baselines:baselines.rows};
+  return {revision:revision.rows[0].revision,rules:rules.rows,calendar:Object.fromEntries(calendar.rows.map(r=>[r.day,{working:r.working,intervals:r.intervals}])),mappings:mappings.rows,versions:versions.rows,items:items.rows,bindings:bindings.rows,exemptions:exemptions.rows,baselines:baselines.rows};
 }
 function rulesFor(data,versionId,requirementId){return effectiveRules(['system','version','requirement'].flatMap(scope=>{const key=scope==='system'?'system':scope==='version'?versionId:requirementId;return data.rules.filter(r=>r.scope===scope&&r.scope_key===key);}));}
 function mappingFor(data,projectId){return Object.fromEntries(data.mappings.filter(m=>m.source_project_id===projectId&&m.semantic).map(m=>[m.status_id,{semantic:m.semantic,markers:m.markers}]));}
@@ -35,9 +35,9 @@ async function plan(client,data,input,actor){
     affected=impact(data,null,input.scope==='version'?input.scopeKey:version?.id,input.scope==='requirement'?input.scopeKey:null);
     write=()=>client.query('INSERT INTO management_rules(scope,scope_key,values) VALUES($1,$2,$3) ON CONFLICT(scope,scope_key) DO UPDATE SET values=EXCLUDED.values',[input.scope,input.scopeKey,after]);
   }else if(input.kind==='calendar'){
-    keys(input.values,['day','working']);const {day,working}=input.values;if(!validDay(day)||!(working===null||typeof working==='boolean'))fail('请填写有效日期及工作日或休息日');
-    before={day,working:data.calendar[day]??null};after={day,working};affected=impact(data);
-    write=()=>client.query('INSERT INTO calendar_days(day,working) VALUES($1,$2) ON CONFLICT(day) DO UPDATE SET working=EXCLUDED.working',[day,working]);
+    keys(input.values,['day','working','intervals']);const {day,working}=input.values;if(!validDay(day)||!(working===null||typeof working==='boolean')||!Array.isArray(input.values.intervals)||input.values.intervals.some(x=>!x||typeof x.start!=='string'||typeof x.end!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(x.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(x.end)||x.start>=x.end))fail('请填写有效日期、工作日和有效工作时段');
+    before={day,...(data.calendar[day]??{working:null,intervals:null})};after={day,working,intervals:working===null?null:input.values.intervals};affected=impact(data);
+    write=()=>working===null?client.query('DELETE FROM calendar_days WHERE day=$1',[day]):client.query('INSERT INTO calendar_days(day,working,intervals) VALUES($1,$2,$3) ON CONFLICT(day) DO UPDATE SET working=EXCLUDED.working,intervals=EXCLUDED.intervals',[day,working,JSON.stringify(input.values.intervals)]);
   }else if(input.kind==='mapping'){
     const binding=data.bindings.find(b=>b.source_project_id===input.projectId);if(!binding)fail('来源项目不存在');
     if(!Array.isArray(input.values)||!input.values.length||input.values.length>500)fail('请选择需要调整的状态映射');

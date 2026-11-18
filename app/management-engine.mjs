@@ -22,8 +22,13 @@ export function validateEffective(rules){if(rules.foundation.value.some(f=>rules
 export function validDay(day){return typeof day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFinite(Date.parse(day+'T00:00:00Z'))&&new Date(day+'T00:00:00Z').toISOString().slice(0,10)===day&&day>='1900-01-01'&&day<='2200-12-31';}
 export function dayOf(value){if(!value||!Number.isFinite(new Date(value).getTime()))return null;return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));}
 export function dateRange(start,end){if(!validDay(start)||!validDay(end)||start>end)throw new Error('日期范围不合法');const days=[];for(let d=new Date(start+'T00:00:00Z');d.toISOString().slice(0,10)<=end;d.setUTCDate(d.getUTCDate()+1)){if(days.length>=3660)throw new Error('日期范围超过十年，需分段核对');days.push(d.toISOString().slice(0,10));}return days;}
-export function workingDay(day,calendar={}){if(!validDay(day))throw new Error('日期不合法');if(typeof calendar[day]==='boolean')return calendar[day];const n=new Date(day+'T00:00:00Z').getUTCDay();return n!==0&&n!==6;}
+export const standardWorkIntervals=[{start:'09:00',end:'12:00'},{start:'13:30',end:'18:00'}];
+function calendarEntry(day,calendar={}){const entry=calendar[day];if(typeof entry==='boolean')return {working:entry,intervals:entry?standardWorkIntervals:[]};if(entry&&typeof entry==='object')return {working:entry.working,intervals:Array.isArray(entry.intervals)?entry.intervals:entry.working===false?[]:standardWorkIntervals};const n=new Date(day+'T00:00:00Z').getUTCDay();return {working:n!==0&&n!==6,intervals:n!==0&&n!==6?standardWorkIntervals:[]};}
+function localTime(day,time){const [hour,minute]=time.split(':').map(Number);const [year,month,date]=day.split('-').map(Number);return new Date(Date.UTC(year,month-1,date,hour-8,minute));}
+export function workingDay(day,calendar={}){if(!validDay(day))throw new Error('日期不合法');return calendarEntry(day,calendar).working;}
 export function workingDays(start,end,calendar={}){return dateRange(start,end).filter(day=>workingDay(day,calendar)).length;}
+export function calendarHours(start,end,calendar={}){if(!start||!end)return 0;const from=new Date(start),to=new Date(end);if(!Number.isFinite(from.getTime())||!Number.isFinite(to.getTime())||to<from)throw new Error('时长范围不合法');let ms=0;for(const day of dateRange(dayOf(from),dayOf(to))){for(const interval of calendarEntry(day,calendar).intervals){const a=Math.max(from.getTime(),localTime(day,interval.start).getTime()),b=Math.min(to.getTime(),localTime(day,interval.end).getTime());if(b>a)ms+=b-a;}}return ms/3600000;}
+export function durationDays(hours){if(hours<0)throw new Error('时长不能为负数');if(hours===0)return 0;return Math.ceil((hours/7.5)*10-1e-9)/10;}
 export function collectionDue(at,schedules,calendar={}){const day=dayOf(at);if(!day||!workingDay(day,calendar))return false;const n=new Date(day+'T00:00:00Z').getUTCDay()||7;const time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(at));return schedules.some(s=>s.day===n&&s.time===time);}
 export const terminal=semantic=>semantic==='delivered'||semantic==='non_delivery';
 export function objectKind(item,bySource){
@@ -65,26 +70,10 @@ export function optimizationSummary(items,mappings){
   return items.filter(i=>objectKind(i,bySource)==='optimization').map(item=>{const children=items.filter(i=>i.parent_source_task_id===item.source_task_id);return {id:item.id,stateComplete:done(item),delivered:known(item)?mappings[item.source_status_id].semantic==='delivered':null,completionGate:children.length>0?children.every(known)?children.every(done):null:done(item)};});
 }
 export function timing(events,mappings,{syncStartAt,now=new Date(),calendar={}}){
-  const rounds={development:[],test:[]};let previousStatus;
-  const add=(round,end,includeEnd=true)=>{if(!round.openAt)return;for(const day of dateRange(dayOf(round.openAt),dayOf(end))){if(!includeEnd&&day===dayOf(end))continue;if(workingDay(day,calendar))round.days.add(day);}round.openAt=null;};
-  for(const event of events){
-    if(new Date(event.at)<new Date(syncStartAt)||new Date(event.at)>new Date(now))continue;
-    const map=Object.hasOwn(mappings,event.statusId)?mappings[event.statusId]:null;
-    if(previousStatus&&event.fromStatusId&&event.fromStatusId!==previousStatus)for(const list of Object.values(rounds)){const round=list.at(-1);if(round&&!round.end)round.unknown=true;}
-    previousStatus=event.statusId;
-    if(!map){for(const list of Object.values(rounds)){const round=list.at(-1);if(round&&!round.end){round.unknown=true;round.openAt=null;}}continue;}
-    for(const stage of ['development','test']){
-      const list=rounds[stage],prefix=stage==='test'?'test':'development',counts=map.semantic===(stage==='test'?'testing':'developing');let round=list.at(-1);
-      if(map.markers.includes(prefix+'_start')&&(!round||round.end||round.closed)){round={start:event.at,end:null,days:new Set(),openAt:counts?event.at:null,unknown:false};list.push(round);}
-      if(round&&!round.end&&!round.closed){
-        if(map.markers.includes(prefix+'_end')){add(round,event.at);round.end=event.at;}
-        else if(terminal(map.semantic)){round.unknown=true;round.openAt=null;round.closed=true;}
-        else if(!counts)add(round,event.at,false);
-        else if(!round.openAt)round.openAt=event.at;
-      }else if(map.markers.includes(prefix+'_end')&&!round)list.push({start:null,end:event.at,days:new Set(),unknown:true});
-    }
-  }
-  return Object.fromEntries(Object.entries(rounds).map(([stage,list])=>{for(const round of list)if(!round.end&&round.openAt)add(round,now);return [stage,{rounds:list.map(r=>({start:r.start,end:r.end,workingDays:r.unknown?null:r.days.size})),workingDays:list.length&&!list.some(r=>r.unknown)?list.reduce((n,r)=>n+r.days.size,0):null,unknown:!list.length||list.some(r=>r.unknown),currentWorkingDays:list.length&&!list.at(-1).unknown?list.at(-1).days.size:null,reopenCount:Math.max(0,list.length-1)}];}));
+ const rounds={development:[],test:[]};let previousStatus;
+ const add=(round,end,includeEnd=true)=>{if(!round.openAt)return;const hours=calendarHours(round.openAt,end,calendar);round.hours+=hours;round.openAt=null;};
+ for(const event of events){if(new Date(event.at)<new Date(syncStartAt)||new Date(event.at)>new Date(now))continue;const map=Object.hasOwn(mappings,event.statusId)?mappings[event.statusId]:null;if(previousStatus&&event.fromStatusId&&event.fromStatusId!==previousStatus)for(const list of Object.values(rounds)){const round=list.at(-1);if(round&&!round.end)round.unknown=true;}previousStatus=event.statusId;if(!map){for(const list of Object.values(rounds)){const round=list.at(-1);if(round&&!round.end){round.unknown=true;round.openAt=null;}}continue;}for(const stage of ['development','test']){const list=rounds[stage],prefix=stage==='test'?'test':'development',counts=map.semantic===(stage==='test'?'testing':'developing');let round=list.at(-1);if(map.markers.includes(prefix+'_start')&&(!round||round.end||round.closed)){round={start:event.at,end:null,hours:0,openAt:counts?event.at:null,unknown:false};list.push(round);}if(round&&!round.end&&!round.closed){if(map.markers.includes(prefix+'_end')){add(round,event.at);round.end=event.at;}else if(terminal(map.semantic)){round.unknown=true;round.openAt=null;round.closed=true;}else if(!counts)add(round,event.at,false);else if(!round.openAt)round.openAt=event.at;}else if(map.markers.includes(prefix+'_end')&&!round)list.push({start:null,end:event.at,hours:0,unknown:true});}}
+ return Object.fromEntries(Object.entries(rounds).map(([stage,list])=>{for(const round of list)if(!round.end&&round.openAt)add(round,now);const unknown=!list.length||list.some(r=>r.unknown);const hours=list.reduce((n,r)=>n+r.hours,0);return [stage,{rounds:list.map(r=>({start:r.start,end:r.end,hours:r.unknown?null:r.hours,workingDays:r.unknown?null:durationDays(r.hours)})),hours:unknown?null:hours,workingDays:unknown?null:durationDays(hours),unknown,currentWorkingDays:list.length&&!list.at(-1).unknown?durationDays(list.at(-1).hours):null,reopenCount:Math.max(0,list.length-1)}];}));
 }
 export function concurrency(items,threshold,calendar={}){const byVersion=new Map();for(const item of items){if(!byVersion.has(item.managed_version_id))byVersion.set(item.managed_version_id,new Map());byVersion.get(item.managed_version_id).set(item.source_task_id,item);}const actors=new Map();let excluded=0;
   for(const item of items){if(objectKind(item,byVersion.get(item.managed_version_id))!=='professional'||item.source_presence!=='current')continue;const start=dayOf(item.planned_start_at),end=dayOf(item.planned_due_at);if(!item.executor_source_id||!start||!end||start>end){excluded++;continue;}if(!actors.has(item.executor_source_id))actors.set(item.executor_source_id,new Map());const days=actors.get(item.executor_source_id);for(const day of dateRange(start,end)){if(!workingDay(day,calendar))continue;if(!days.has(day))days.set(day,[]);days.get(day).push(item.id);}}
