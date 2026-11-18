@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>VikingPM · 开发验收</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
 <body><main>
-<header><p class="eyebrow">VikingPM · 第一版开发</p><h1>登录、权限与版本来源验收</h1><p>本入口用于 P01–P05 开发验收。完整业务页面仍按总原型 v2 后续接入。</p></header>
+<header><p class="eyebrow">VikingPM · 第一版开发</p><h1>登录、权限与版本来源验收</h1><p>本入口用于 P01–P06 开发验收。完整业务页面仍按总原型 v2 后续接入。</p></header>
 <p id="message" role="status" aria-live="polite">正在检查服务状态…</p>
 <section id="login" hidden><h2>使用钉钉确认身份</h2><p>仅已核对企业身份并明确授权的人员可访问。首个登录者不会自动成为所有者。</p><a class="button" href="/auth/dingtalk/start">钉钉登录</a></section>
 <section id="account" hidden><h2>当前身份</h2><p id="identity"></p><button id="logout">退出登录</button><button id="write-check">检查写入权限（不保存数据）</button></section>
@@ -26,5 +26,20 @@
 <details><summary>首次计划基线</summary><p>首次计划须核对版本纳入时的证据。仅在当前计划与首次纳入计划一致时确认；后续改期不会覆盖已确认基线。缺失计划仍记未知。</p><form id="mg-baseline-form"><label><input id="mg-baseline-evidence" type="checkbox" required>我已核对纳入时计划证据，当前计划与首次计划一致</label><label for="mg-baseline-reason">核对依据与原因</label><input id="mg-baseline-reason" required maxlength="500"><button type="submit">预览首次计划确认</button></form></details>
 <details><summary>缺少职能的不适用确认</summary><p>由已确认的版本负责人本人操作，并须具备管理员权限。已有当前或历史工单的职能不能借此忽略未完成或来源缺失。</p><form id="mg-exemption-form"><label for="mg-exemption-requirement">核心需求</label><select id="mg-exemption-requirement"></select><label for="mg-exemption-function">缺少职能</label><select id="mg-exemption-function"></select><label><input id="mg-exemption-value" type="checkbox" checked>确认该职能不适用（取消勾选可撤回确认）</label><label for="mg-exemption-reason">确认依据与原因</label><input id="mg-exemption-reason" required maxlength="500"><button type="submit">预览不适用确认</button></form></details>
 <dialog id="mg-review"><h3>保存前复核</h3><p id="mg-review-impact"></p><div id="mg-review-changes"></div><p>确认后直接保存并记录原因与前后值。</p><button id="mg-save" type="button">确认保存</button><button id="mg-cancel" type="button">取消</button></dialog></section>
+<section id="feedback-section" hidden aria-labelledby="feedback-heading"><h2 id="feedback-heading">P06 · 反馈入库和当前值</h2>
+<p>原始记录、修订、校验与有效历史分别保留。当前值按平台创建时间选择；100% 不代表 Teambition 正式交付。同刻冲突保留上次仍有效的确定值，标记待复核。</p>
+<label for="fb-version">受控版本</label><select id="fb-version"></select><button id="fb-refresh" type="button">刷新反馈与重新校验</button><p id="fb-message" role="status" aria-live="polite"></p>
+<div id="fb-admin" hidden>
+<details><summary>确认反馈来源（只读取现有表格）</summary><p>填写已核对的 AI 表格及数据表 ID。旧只读测试结果不作为正式有效依据；本轮须重新核对跟踪区间、当前任务与真实身份。重新启用保留首次确认时间。不创建表格或发送消息。</p>
+<form id="fb-source-form"><label for="fb-base">AI 表格 ID</label><input id="fb-base" required maxlength="200"><label for="fb-sheet">数据表 ID</label><input id="fb-sheet" required maxlength="200"><label><input id="fb-source-enabled" type="checkbox" checked>启用（取消勾选可停用已登记来源）</label><label for="fb-source-reason">核对依据</label><input id="fb-source-reason" required maxlength="500"><label><input id="fb-source-confirm" type="checkbox" required>已核对具体表格、字段与可信平台提交人，确认用于该受控项目</label><button type="submit">确认来源</button></form></details>
+<details><summary>确认当前执行者身份映射</summary><p>根据稳定 ID 核对本人，不按姓名猜测。反馈人员不需要后台访问权限。</p>
+<form id="fb-executor-form"><label for="fb-executor">Teambition 执行者稳定 ID</label><select id="fb-executor" required></select><label for="fb-person">已确认的钉钉人员</label><select id="fb-person" required></select><label><input id="fb-mapping-enabled" type="checkbox" checked>启用映射</label><label for="fb-mapping-reason">核对依据</label><input id="fb-mapping-reason" required maxlength="500"><label><input id="fb-mapping-confirm" type="checkbox" required>已核对这两个身份属于同一人</label><button type="submit">确认映射</button></form></details>
+<form id="fb-read-form"><label for="fb-source">已确认反馈来源</label><select id="fb-source" required></select><label for="fb-read-reason">本轮读取原因</label><input id="fb-read-reason" required maxlength="500"><button type="submit">读取反馈并核对当前 TB 事实</button></form>
+<form id="fb-review-form"><h3>风险说明人工复核</h3><p>只能复核当前仍为待复核的风险说明。错误编号、标题、身份或资格不能人工放行。同刻冲突请提交时间更晚的正确反馈。</p><label for="fb-review">待复核记录</label><select id="fb-review" required></select><label for="fb-review-reason">复核依据</label><input id="fb-review-reason" required maxlength="500"><label><input id="fb-review-confirm" type="checkbox" required>已核对风险原因、影响及所需协助充分</label><button type="submit">确认风险说明</button></form>
+</div>
+<p id="fb-count"></p><div class="table-wrap" tabindex="0" role="region" aria-label="任务当前反馈"><table><thead><tr><th scope="col">编号与任务</th><th scope="col">当前值</th><th scope="col">校验状态</th><th scope="col">平台提交时间</th><th scope="col">说明</th></tr></thead><tbody id="fb-current"></tbody></table></div>
+<details><summary>原始修订与校验结果（原始正文仅保存在数据库）</summary><pre id="fb-validations"></pre></details><details><summary>有效反馈历史（历史通过不等于当前仍有效）</summary><pre id="fb-history"></pre></details><button id="fb-prev" type="button">反馈上一页</button><button id="fb-next" type="button">反馈下一页</button>
+</section>
+
 <footer>仅对已批准迭代只读接入 TB，不修改来源，不发送通知。本批未进行 P08/P12 资源验收。</footer>
 </main></body></html>

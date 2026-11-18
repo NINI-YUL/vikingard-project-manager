@@ -59,13 +59,13 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
     const versions = rows(await query('sprint-query',['--project-id',projectId,'--id',versionId]));
     const version = versions.find(v => v.id === versionId && v.projectId === projectId);
     if (versions.length !== 1 || !version || typeof version.name !== 'string') throw new Error('来源迭代不匹配');
-    return {projectId,versionId,projectName:project.name,versionName:version.name};
+    return {projectId,versionId,projectName:project.name,versionName:version.name,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null};
   }
   return {
     candidates: [{projectId:config.projectId,versionIds:[...config.versionIds]}],
     getVersion,
     async read({projectId,sourceVersionId,knownTaskIds=[]}) {
-      await getVersion(projectId,sourceVersionId);
+      const project=await getVersion(projectId,sourceVersionId);
       const args = ['--project-id',projectId];
       const types = rows(await query('sfc-query',args));
       const typeNames = names(types);
@@ -113,7 +113,7 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
           cursors.add(pageToken);
         }
       }
-      return {...snapshot,reconciliations,activities,binding:{organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,functionOptions,typeNames,statusNames,statusDefinitions:statuses.map(status=>({id:status.id??status._id,name:status.name,workflowId:status.workflowId,workflowName:workflowNames[status.workflowId]}))}};
+      return {...snapshot,reconciliations,activities,binding:{uniqueIdPrefix:project.uniqueIdPrefix,organizationId:config.organizationId,categoryFieldId:config.categoryFieldId,functionFieldId:config.functionFieldId,functionOptions,typeNames,statusNames,statusDefinitions:statuses.map(status=>({id:status.id??status._id,name:status.name,workflowId:status.workflowId,workflowName:workflowNames[status.workflowId]}))}};
     }
   };
 }

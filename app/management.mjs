@@ -1,3 +1,4 @@
+import {revalidateFeedback} from './feedback-state.mjs';
 import {digest,transaction} from './database.mjs';
 import {Denied,requireRole,requireCurrentRole} from './security.mjs';
 import {functions,semantics,markers,defaults,effectiveRules,validateRules,validateEffective,validDay,workingDays,dayOf,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency,standardWorkIntervals} from './management-engine.mjs';
@@ -70,7 +71,7 @@ export async function changeManagement(pool,actor,input,save=false){
     if(save&&previewToken!==token)throw new Denied(409,'来源或配置已变化，请重新预览影响后保存');
     let result;try{result=await plan(client,data,input,actor);}catch(error){if(error instanceof Denied)throw error;throw new Denied(400,error.message);}
     if(!save)return {revision:data.revision,previewToken:token,before:result.before,after:result.after,affected:result.affected};
-    await result.write();await client.query('UPDATE management_state SET revision=revision+1 WHERE id=1');
+    await result.write();await revalidateFeedback(client);await client.query('UPDATE management_state SET revision=revision+1 WHERE id=1');
     await client.query('INSERT INTO audit_events(actor_id,action,before_value,after_value,reason) VALUES($1,$2,$3,$4,$5)',[actor.id,'management.'+input.kind+'.saved',result.before,{...result.affected,value:result.after,scope:input.scope,scopeKey:input.scopeKey,projectId:input.projectId},input.reason.trim()]);
     return {saved:true,revision:data.revision+1,affected:result.affected,mappingRecovery:input.kind==='mapping'?'pending':undefined};
   });
@@ -104,6 +105,6 @@ export async function verifyMappings(pool,actor,input){
     const latest=data.mappings.filter(m=>m.source_project_id===input.projectId).reduce((date,m)=>Math.max(date,new Date(m.updated_at).getTime()),0);const reread=versions.every(v=>v.last_success_at&&new Date(v.last_success_at).getTime()>=latest);
     const blockers=data.items.filter(i=>versions.some(v=>v.id===i.managed_version_id)&&(!maps[i.source_status_id]||i.source_presence!=='current'||i.structure_issues.length));const verified=reread&&blockers.length===0;
     if(verified)await client.query("UPDATE status_mappings SET recovery='verified' WHERE source_project_id=$1 AND semantic IS NOT NULL",[input.projectId]);
-    await client.query('UPDATE management_state SET revision=revision+1 WHERE id=1');await client.query('INSERT INTO audit_events(actor_id,action,after_value,reason) VALUES($1,$2,$3,$4)',[actor.id,'management.mapping.verification',{projectId:input.projectId,verified,reread,blockedTaskCount:blockers.length},input.reason]);return {verified,reread,blockedTaskCount:blockers.length};
+    await revalidateFeedback(client);await client.query('UPDATE management_state SET revision=revision+1 WHERE id=1');await client.query('INSERT INTO audit_events(actor_id,action,after_value,reason) VALUES($1,$2,$3,$4)',[actor.id,'management.mapping.verification',{projectId:input.projectId,verified,reread,blockedTaskCount:blockers.length},input.reason]);return {verified,reread,blockedTaskCount:blockers.length};
   });
 }

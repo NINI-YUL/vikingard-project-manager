@@ -56,6 +56,9 @@ try {
     await pool.query('GRANT SELECT,INSERT,UPDATE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON plan_baselines TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON plan_baselines FROM vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews TO vikingpm_app');
+    await pool.query('REVOKE UPDATE,DELETE ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews FROM vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON source_activities,source_observations TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON source_activities,source_observations FROM vikingpm_app');
     console.log(`业务库已准备；新增迁移 ${count}；登录未自动启用`);
@@ -68,6 +71,9 @@ try {
     await pool.query('GRANT SELECT,INSERT,UPDATE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON plan_baselines TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON plan_baselines FROM vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews TO vikingpm_app');
+    await pool.query('REVOKE UPDATE,DELETE ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews FROM vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON source_activities,source_observations TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON source_activities,source_observations FROM vikingpm_app');
     console.log(`迁移完成；新增 ${count}`);

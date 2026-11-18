@@ -1,3 +1,4 @@
+import {revalidateFeedback} from './feedback-state.mjs';
 import {resolveFunction} from './function-catalog.mjs';
 import { randomUUID } from 'node:crypto';
 import { transaction } from './database.mjs';
@@ -119,6 +120,7 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
       await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,error_code,error_detail) VALUES($1,$2,$3,now(),'failed',$4,$5)",[runId,versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
       await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_status='failed',last_error_code=$3,last_error_detail=$4 WHERE managed_version_id=$1",[versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
       await client.query("UPDATE source_sync_states SET next_due_at=now()+LEAST($2,60*power(2,LEAST(failure_count,8)))::integer * interval '1 second',failure_count=failure_count+1 WHERE managed_version_id=$1",[versionId,intervalSeconds]);
+      await revalidateFeedback(client);
       await audit(client,actorId,'version.sync.failed',{versionId,errorCode},why);
       return {status:'failed',errorCode,importedCount:0};
     }
@@ -129,6 +131,7 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
         ON CONFLICT(source_project_id) DO UPDATE SET organization_id=EXCLUDED.organization_id,category_field_id=EXCLUDED.category_field_id,function_field_id=EXCLUDED.function_field_id,type_names=EXCLUDED.type_names,status_names=EXCLUDED.status_names,function_options=EXCLUDED.function_options,verified_at=now()`,[version.source_project_id,b.organizationId,b.categoryFieldId,b.functionFieldId,b.typeNames,b.statusNames,JSON.stringify(b.functionOptions ?? [])]);
     }
     if(snapshot.binding?.statusDefinitions)await client.query('UPDATE source_bindings SET status_definitions=$2 WHERE source_project_id=$1',[version.source_project_id,JSON.stringify(snapshot.binding.statusDefinitions)]);
+    if(snapshot.binding)await client.query('UPDATE source_bindings SET unique_id_prefix=$2 WHERE source_project_id=$1',[version.source_project_id,snapshot.binding.uniqueIdPrefix??null]);
     for (const item of items) await client.query(`INSERT INTO work_items(id,managed_version_id,source_task_id,visible_key,title,type_id,type_name,category,function_name,function_resolution,parent_source_task_id,parent_missing,source_status_id,raw_status,availability,structure_issues,source_updated_at,last_synced_at,raw_source)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,now(),$18)
       ON CONFLICT(managed_version_id,source_task_id) DO UPDATE SET visible_key=EXCLUDED.visible_key,title=EXCLUDED.title,type_id=EXCLUDED.type_id,type_name=EXCLUDED.type_name,category=EXCLUDED.category,function_name=EXCLUDED.function_name,function_resolution=EXCLUDED.function_resolution,parent_source_task_id=EXCLUDED.parent_source_task_id,parent_missing=EXCLUDED.parent_missing,source_status_id=EXCLUDED.source_status_id,raw_status=EXCLUDED.raw_status,availability=EXCLUDED.availability,structure_issues=EXCLUDED.structure_issues,source_updated_at=EXCLUDED.source_updated_at,last_synced_at=now(),raw_source=EXCLUDED.raw_source`,[randomUUID(),versionId,item.sourceTaskId,item.visibleKey,item.title,item.typeId,item.typeName,item.category,item.functionName,item.functionResolution,item.parentSourceTaskId,item.parentMissing,item.sourceStatusId,item.rawStatus,item.availability,JSON.stringify(item.structureIssues),item.sourceUpdatedAt,JSON.stringify(item.rawSource)]);
@@ -137,6 +140,7 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
     await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_success_at=now(),last_status='succeeded',last_error_code=NULL,last_error_detail=NULL WHERE managed_version_id=$1",[versionId,startedAt]);
     await client.query("UPDATE source_sync_states SET cursor=$2,failure_count=0,next_due_at=now()+$3::integer * interval '1 second' WHERE managed_version_id=$1",[versionId,runId,intervalSeconds]);
     const result = {status:'succeeded',importedCount:items.length,issueCount:items.filter(i=>i.structureIssues.length).length,...(snapshot.reconciliations?.length?{reconciledCount:snapshot.reconciliations.length}:{})};
+    await revalidateFeedback(client);
     await audit(client,actorId,'version.sync.succeeded',{versionId,...result},why);
     return result;
   });

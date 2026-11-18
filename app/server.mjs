@@ -1,3 +1,4 @@
+import {configureFeedback,approveFeedbackReview,refreshFeedback,feedbackOverview,createFeedbackReader} from './feedback.mjs';
 import {managementCatalog,managementResults,changeManagement,verifyMappings} from './management.mjs';
 import { createServer as httpServer } from 'node:http';
 import { createServer as httpsServer } from 'node:https';
@@ -6,7 +7,7 @@ import { Denied, requireRole, authenticate, logout, listPeople, changePerson, cr
 import { beginLogin, completeLogin } from './dingtalk.mjs';
 import { enrollVersion, syncVersion } from './version-source.mjs';
 
-const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
+const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
 function cookies(req) {
   const result = {};
   for (const item of (req.headers.cookie ?? '').split(';')) {
@@ -24,7 +25,7 @@ async function body(req,limit=8192) {
   try { const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw 0; return parsed; }
   catch { throw new Denied(400,'请求格式错误'); }
 }
-export function createApplication(pool,config,{ loginResolver, source } = {}) {
+export function createApplication(pool,config,{ loginResolver, source, feedbackReader } = {}) {
   const handle = async (req,res) => {
     res.setHeader('Cache-Control','no-store');
     res.setHeader('Referrer-Policy','no-referrer');
@@ -39,7 +40,7 @@ export function createApplication(pool,config,{ loginResolver, source } = {}) {
         const [type,file] = assets.get(path); res.writeHead(200,{'Content-Type':type}); return res.end(readFileSync(new URL('public/'+file,import.meta.url)));
       }
       if (req.method === 'GET' && path === '/healthz') {
-        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P05',loginEnabled:config.loginEnabled}); }
+        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P06',loginEnabled:config.loginEnabled}); }
         catch { return json(res,503,{status:'unavailable'}); }
       }
       if (req.method === 'GET' && path === '/auth/dingtalk/start') {
@@ -59,6 +60,19 @@ export function createApplication(pool,config,{ loginResolver, source } = {}) {
       requireRole(actor,'viewer');
       if (!['GET','HEAD'].includes(req.method)) {
         if (req.headers.origin !== config.origin || req.headers['x-csrf-token'] !== actor.csrf) throw new Denied(403,'请求来源或会话校验失败');
+      }
+      const feedbackTarget=path.match(/^\/api\/feedback\/versions\/([0-9a-f-]{36})$/i);
+      if(req.method==='GET'&&feedbackTarget)return json(res,200,await feedbackOverview(pool,actor,feedbackTarget[1],Number(url.searchParams.get('offset')??0)));
+      if(req.method==='POST'&&path==='/api/feedback/configure'){
+        requireRole(actor,'admin');return json(res,200,await configureFeedback(pool,actor,await body(req),config.teambition?[config.teambition.projectId]:[]));
+      }
+      if(req.method==='POST'&&path==='/api/feedback/approve'){
+        requireRole(actor,'admin');return json(res,200,await approveFeedbackReview(pool,actor,await body(req)));
+      }
+      if(req.method==='POST'&&path==='/api/feedback/read'){
+        requireRole(actor,'admin');const input=await body(req);
+        if(Object.keys(input).some(k=>!['sourceId','versionId','reason'].includes(k)))throw new Denied(400,'反馈读取字段不合法');
+        return json(res,200,await refreshFeedback(pool,actor,input,source,feedbackReader??createFeedbackReader(config)));
       }
       if(req.method==='GET'&&path==='/api/management')return json(res,200,await managementCatalog(pool));
       const managementVersion=path.match(/^\/api\/management\/versions\/([0-9a-f-]{36})$/i);
