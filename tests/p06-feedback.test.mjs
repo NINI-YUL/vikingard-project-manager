@@ -82,6 +82,7 @@ test('P06 PostgreSQL formal ingestion, revisions, eligibility, atomic failure, r
     await assert.rejects(ingest([first,first]));assert.equal(await count('feedback_records'),before);
   });
   await t.test('risk description requires scoped human review; rejects cannot be manually approved',async()=>{
+    const incomplete=raw('incomplete-risk',82,baseTime+8500,{'当前情况':{name:'存在风险'}});await ingest([first,second,incomplete]);let incompleteReview=(await feedbackOverview(pool,owner,version.id)).validations.find(v=>v.recordId==='incomplete-risk');assert.equal(incompleteReview.verdict,'review');assert.equal((await current()).progressPercent,70);
     const risk=raw('risk',85,baseTime+9000,{'当前情况':{name:'存在风险'},'风险原因与所需协助':{markdown:'原因：接口延后；影响：联调延期；需要接口协助'}});
     await ingest([first,second,risk]);assert.equal((await current()).progressPercent,70);
     let review=(await feedbackOverview(pool,owner,version.id)).validations.find(v=>v.recordId==='risk');assert.equal(review.verdict,'review');

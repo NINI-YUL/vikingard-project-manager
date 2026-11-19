@@ -30,6 +30,10 @@ export function evaluateFeedback(record,raw,context) {
     if(!mapping?.enabled||!mapping.active||!mapping.identity_enabled||!mapping.confirmed||mapping.corp_id!==version?.corp_id)reasons.push('当前执行者的跨平台身份映射未确认或已停用');
     if(!reasons.length) {
       const result=validateFeedback([raw],{task:{projectId:version.teambition_project_id,uniqueId:task.raw_source.uniqueId,content:task.title,executorId:task.executor_source_id,isDone:task.source_is_done,isArchived:task.raw_source.isArchived},project:{id:version.teambition_project_id,uniqueIdPrefix:prefix},mapping:{confirmed:true,tbUserId:task.executor_source_id,unionId:mapping.union_id}}).results[0];
+      const riskSituation=['存在风险','已阻塞'].includes(raw.fields['当前情况']?.name);
+      const riskMissing=riskSituation && (typeof raw.fields['风险原因与所需协助']?.markdown!=='string' || !raw.fields['风险原因与所需协助'].markdown.trim());
+      const remainingReasons=result.reasons.filter(reason=>reason!=='风险或阻塞说明必填');
+      if(riskMissing && remainingReasons.length===0) return {verdict:'review',reasons:['风险或阻塞说明不完整，需人工复核'],progressPercent:result.progressPercent};
       return {verdict:result.verdict==='passes_checked_rules'?'valid':result.verdict,reasons:[...result.reasons,...result.reviews],progressPercent:result.progressPercent};
     }
   }
