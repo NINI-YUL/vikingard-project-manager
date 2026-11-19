@@ -1,4 +1,5 @@
 import {configureFeedback,approveFeedbackReview,refreshFeedback,feedbackOverview,createFeedbackReader} from './feedback.mjs';
+import {planNotifications,recordNotificationAttempt,notificationOverview} from './notifications.mjs';
 import {managementCatalog,managementResults,changeManagement,verifyMappings} from './management.mjs';
 import { createServer as httpServer } from 'node:http';
 import { createServer as httpsServer } from 'node:https';
@@ -40,7 +41,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         const [type,file] = assets.get(path); res.writeHead(200,{'Content-Type':type}); return res.end(readFileSync(new URL('public/'+file,import.meta.url)));
       }
       if (req.method === 'GET' && path === '/healthz') {
-        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P06',loginEnabled:config.loginEnabled}); }
+        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P07',loginEnabled:config.loginEnabled}); }
         catch { return json(res,503,{status:'unavailable'}); }
       }
       if (req.method === 'GET' && path === '/auth/dingtalk/start') {
@@ -63,6 +64,10 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
       }
       const feedbackTarget=path.match(/^\/api\/feedback\/versions\/([0-9a-f-]{36})$/i);
       if(req.method==='GET'&&feedbackTarget)return json(res,200,await feedbackOverview(pool,actor,feedbackTarget[1],Number(url.searchParams.get('offset')??0)));
+      const noticeTarget=path.match(/^\/api\/notifications\/versions\/([0-9a-f-]{36})$/i);
+      if(req.method==='GET'&&noticeTarget)return json(res,200,await notificationOverview(pool,actor,noticeTarget[1]));
+      if(req.method==='POST'&&path==='/api/notifications/plan'){requireRole(actor,'admin');const value=await body(req);if(Object.keys(value).some(k=>!['versionId','formBaseUrl'].includes(k)))throw new Denied(400,'通知计划字段不合法');return json(res,200,await planNotifications(pool,actor,value.versionId,value.formBaseUrl));}
+      if(req.method==='POST'&&path==='/api/notifications/attempt'){requireRole(actor,'admin');const value=await body(req);if(Object.keys(value).some(k=>!['jobId','result','detail'].includes(k)))throw new Denied(400,'通知结果字段不合法');return json(res,200,await recordNotificationAttempt(pool,actor,value.jobId,value.result,value.detail??''));}
       if(req.method==='POST'&&path==='/api/feedback/configure'){
         requireRole(actor,'admin');return json(res,200,await configureFeedback(pool,actor,await body(req),config.teambition?[config.teambition.projectId]:[]));
       }
@@ -82,7 +87,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         return json(res,200,path.endsWith('/verify')?await verifyMappings(pool,actor,input):await changeManagement(pool,actor,input,path.endsWith('/save')));
       }
       if (req.method === 'GET' && path === '/api/me') return json(res,200,actor);
-      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P05',sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'分层规则、状态语义、工作日历与阶段计算已接入；缺失证据保留未知。'});
+      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P07',sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'分层规则、状态语义、工作日历与阶段计算已接入；缺失证据保留未知。'});
       if (req.method === 'GET' && path === '/api/version-people') {
         requireRole(actor,'admin');
         return json(res,200,(await pool.query('SELECT p.id,p.display_name AS "displayName" FROM people p JOIN identity_mappings i ON i.person_id=p.id WHERE p.active AND i.enabled AND i.confirmed AND i.corp_id=$1 ORDER BY p.display_name,p.id',[config.dingtalk.corpId])).rows);

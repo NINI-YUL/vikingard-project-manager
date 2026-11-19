@@ -56,7 +56,8 @@ try {
     await pool.query('GRANT SELECT,INSERT,UPDATE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON plan_baselines TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON plan_baselines FROM vikingpm_app');
-    await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback,notification_jobs TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT ON notification_attempts TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews FROM vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON source_activities,source_observations TO vikingpm_app');
@@ -71,7 +72,8 @@ try {
     await pool.query('GRANT SELECT,INSERT,UPDATE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON plan_baselines TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON plan_baselines FROM vikingpm_app');
-    await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback,notification_jobs TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT ON notification_attempts TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON feedback_revisions,feedback_validations,valid_feedback_history,feedback_reviews FROM vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON source_activities,source_observations TO vikingpm_app');
