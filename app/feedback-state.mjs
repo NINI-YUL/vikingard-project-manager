@@ -30,10 +30,10 @@ export function evaluateFeedback(record,raw,context) {
     if(!mapping?.enabled||!mapping.active||!mapping.identity_enabled||!mapping.confirmed||mapping.corp_id!==version?.corp_id)reasons.push('当前执行者的跨平台身份映射未确认或已停用');
     if(!reasons.length) {
       const result=validateFeedback([raw],{task:{projectId:version.teambition_project_id,uniqueId:task.raw_source.uniqueId,content:task.title,executorId:task.executor_source_id,isDone:task.source_is_done,isArchived:task.raw_source.isArchived},project:{id:version.teambition_project_id,uniqueIdPrefix:prefix},mapping:{confirmed:true,tbUserId:task.executor_source_id,unionId:mapping.union_id}}).results[0];
-      const riskSituation=['存在风险','已阻塞'].includes(raw.fields['当前情况']?.name);
-      const riskMissing=riskSituation && (typeof raw.fields['风险原因与所需协助']?.markdown!=='string' || !raw.fields['风险原因与所需协助'].markdown.trim());
-      const remainingReasons=result.reasons.filter(reason=>reason!=='风险或阻塞说明必填');
-      if(riskMissing && remainingReasons.length===0) return {verdict:'review',reasons:['风险或阻塞说明不完整，需人工复核'],progressPercent:result.progressPercent};
+      const riskSituation=raw.fields['当前情况']?.name==='存在风险';
+      const riskFields=['风险原因','预估延期时间','所需协助'];
+      const riskMissing=riskSituation && riskFields.some(name=>typeof raw.fields[name]!=='string'||!raw.fields[name].trim());
+      if(riskMissing && remainingReasons.length===0) return {verdict:'review',reasons:['风险原因、预估延期时间和所需协助未完整填写，需人工复核'],progressPercent:result.progressPercent};
       return {verdict:result.verdict==='passes_checked_rules'?'valid':result.verdict,reasons:[...result.reasons,...result.reviews],progressPercent:result.progressPercent};
     }
   }
@@ -85,7 +85,7 @@ export async function revalidateFeedback(client) {
     await client.query('UPDATE feedback_records SET current_validation_id=$2 WHERE id=$1',[record.id,validation.id]);
     const approved=evaluation.verdict==='review'&&(await client.query('SELECT 1 FROM feedback_reviews WHERE validation_id=$1',[validation.id])).rowCount>0;
     if(evaluation.verdict==='valid'||approved) {
-      const situation=raw.fields['当前情况'].name,note=raw.fields['风险原因与所需协助']?.markdown??'';
+      const situation=raw.fields['当前情况'].name,note=['风险原因','预估延期时间','所需协助'].map(name=>name+'：'+(raw.fields[name]??'')).join('\n');
       await client.query('INSERT INTO valid_feedback_history(id,work_item_id,validation_id,submitted_at,progress_percent,situation,note,submitter_id,revision_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(revision_id) DO NOTHING',[randomUUID(),task.id,validation.id,new Date(record.created_time),evaluation.progressPercent,situation,note,mapping.person_id,record.latest_revision_id]);
       const history=(await client.query('SELECT * FROM valid_feedback_history WHERE revision_id=$1',[record.latest_revision_id])).rows[0];
       if(!candidates.has(task.id))candidates.set(task.id,[]);

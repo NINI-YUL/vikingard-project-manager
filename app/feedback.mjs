@@ -94,7 +94,7 @@ export async function approveFeedbackReview(pool,actor,input) {
   if(!input||Object.keys(input).some(k=>!['validationId','confirmed','reason'].includes(k))||!uuid(input.validationId)||input.confirmed!==true||!text(input.reason,500))throw new Denied(400,'需要明确待复核记录及复核依据');
   return transaction(pool,async client=>{
     await requireCurrentRole(client,actor.id,'admin');await revalidateFeedback(client);
-    const row=(await client.query("SELECT f.id FROM feedback_validations f JOIN feedback_records r ON r.latest_revision_id=f.revision_id JOIN feedback_revisions v ON v.id=f.revision_id WHERE v.raw_source->'fields'->'当前情况'->>'name' IN ('存在风险','已阻塞') AND f.id=$1 AND f.verdict='review' AND r.current_validation_id=f.id",[input.validationId])).rows[0];
+    const row=(await client.query("SELECT f.id FROM feedback_validations f JOIN feedback_records r ON r.latest_revision_id=f.revision_id JOIN feedback_revisions v ON v.id=f.revision_id WHERE v.raw_source->'fields'->'当前情况'->>'name' = '存在风险' AND f.id=$1 AND f.verdict='review' AND r.current_validation_id=f.id",[input.validationId])).rows[0];
     if(!row)throw new Denied(409,'该复核结果已变化或不可人工放行，请重新读取');
     await client.query('INSERT INTO feedback_reviews(validation_id,approved_by,reason) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[row.id,actor.id,input.reason]);
     await revalidateFeedback(client);
