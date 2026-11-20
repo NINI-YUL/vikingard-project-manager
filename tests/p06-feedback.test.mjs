@@ -88,6 +88,20 @@ test('P06 PostgreSQL formal ingestion, revisions, eligibility, atomic failure, r
     let review=(await feedbackOverview(pool,owner,version.id)).validations.find(v=>v.recordId==='risk');assert.equal(review.verdict,'review');
     await approveFeedbackReview(pool,owner,{validationId:review.validationId,confirmed:true,reason:'已核对原因、影响与所需协助'});assert.equal((await current()).progressPercent,85);
     await ingest([first,second,risk]);assert.equal((await current()).progressPercent,85);
+    const olderPending=raw('older-pending-risk',30,baseTime+8700,{'当前情况':{name:'存在风险'},'风险原因':'原因','预估延期时间':'1天','所需协助':'否'});
+    await ingest([first,second,risk,olderPending]);
+    let pending=(await feedbackOverview(pool,owner,version.id)).pendingReviews;
+    assert.equal(pending.length,1);assert.equal(pending[0].taskTitle,title);assert.equal(pending[0].progressPercent,30);
+    const editedPending={...olderPending,fields:{...olderPending.fields,'预估延期时间':'2天'}};
+    await ingest([first,second,risk,editedPending]);
+    const page=await feedbackOverview(pool,owner,version.id,100);
+    pending=page.pendingReviews;assert.equal(pending.length,1);assert.equal(pending[0].progressPercent,30);
+    const oldPendingValidation=(await pool.query("SELECT f.id FROM feedback_validations f JOIN feedback_revisions v ON v.id=f.revision_id JOIN feedback_records r ON r.id=v.record_id WHERE r.source_record_id='older-pending-risk' AND v.id<>r.latest_revision_id LIMIT 1")).rows[0];
+    assert.notEqual(pending[0].validationId,oldPendingValidation.id);
+    await approveFeedbackReview(pool,owner,{validationId:pending[0].validationId,confirmed:true,reason:'测试修订复核'});
+    assert.equal((await feedbackOverview(pool,owner,version.id)).pendingReviews.length,0);
+    assert.equal((await current()).progressPercent,85);
+
     const bad=raw('bad-risk',95,baseTime+10000,{'任务':'wrong','当前情况':{name:'存在风险'}});await ingest([first,second,risk,bad]);review=(await feedbackOverview(pool,owner,version.id)).validations.find(v=>v.recordId==='bad-risk');
     await assert.rejects(approveFeedbackReview(pool,owner,{validationId:review.validationId,confirmed:true,reason:'拒绝不能放行'}),{status:409});
     const paused=raw('paused',90,baseTime+11000,{'当前情况':{name:'已暂停'}});await ingest([first,second,paused]);review=(await feedbackOverview(pool,owner,version.id)).validations.find(v=>v.recordId==='paused');await assert.rejects(approveFeedbackReview(pool,owner,{validationId:review.validationId,confirmed:true,reason:'含义尚未确认'}),{status:409});
