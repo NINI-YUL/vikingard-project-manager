@@ -1,3 +1,4 @@
+import {revalidateFeedback} from './feedback-state.mjs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { transaction, digest } from './database.mjs';
 
@@ -78,6 +79,7 @@ export async function changePerson(pool, actorId, personId, patch, kind) {
     }
     await protectOwner(client);
     await client.query('UPDATE login_sessions SET revoked_at=now() WHERE person_id=$1 AND revoked_at IS NULL', [personId]);
+    await revalidateFeedback(client);
     const after = safePerson(target);
     await audit(client, actorId, personId, kind === 'access' ? 'access.change' : 'identity.change', before, after, patch.reason);
     return after;

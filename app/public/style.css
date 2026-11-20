@@ -7,3 +7,5 @@ button,.button{min-height:44px}td{overflow-wrap:anywhere}.table-wrap:focus-visib
 #management-rules details{margin:16px 0;border-top:1px solid #dce2ed;padding-top:12px}#management-rules fieldset{margin:12px 0;border:1px solid #dce2ed}#management-rules fieldset label{display:inline-block;margin:6px 10px}#mg-feedback:not(:empty){padding:12px;background:#e8edf8;border-radius:6px}#mg-review{max-width:680px;width:90%;max-height:85vh;overflow:auto;border:1px solid #b6c1d3;border-radius:12px;padding:24px}#mg-review::backdrop{background:#24324a88}#mg-mappings select{min-width:160px}#mg-mappings label{white-space:nowrap}#mg-results .table-wrap{margin:16px 0}
 #management-rules button[hidden]{display:none}
 #mg-results table{min-width:900px}
+
+#feedback-section details{margin:16px 0;border-top:1px solid #dce2ed;padding-top:12px}#fb-message:not(:empty){padding:12px;background:#e8edf8;border-radius:6px}#feedback-section table{min-width:720px}#fb-admin[hidden]{display:none}

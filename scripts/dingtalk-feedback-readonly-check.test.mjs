@@ -13,7 +13,7 @@ function row(id, time, fields = {}) {
   } };
 }
 test('newer wrong title and wrong number cannot replace earlier matching sample; preserve inputs', () => {
-  const input = [row('risk', 1, { '当前进度百分比': '0.15', '当前情况': { name: '存在风险' }, '风险原因与所需协助': { markdown: '与预估时间出现偏差' } }), row('normal', 2), row('bad-number', 3, { 'TB工单id': 'INVALID-TEST' }), row('bad-title', 4, { '任务': '伪造标题' })];
+  const input = [row('risk', 1, { '当前进度百分比': '0.15', '当前情况': { name: '存在风险' }, '风险原因':'接口延后','预估延期时间':'1天','所需协助':'接口协助' }), row('normal', 2), row('bad-number', 3, { 'TB工单id': 'INVALID-TEST' }), row('bad-title', 4, { '任务': '伪造标题' })];
   const before = structuredClone(input), result = validateFeedback(input, context);
   assert.deepEqual(result.results.map(x => x.verdict), ['review', 'passes_checked_rules', 'reject', 'reject']);
   assert.equal(result.latestCheckedCandidate, 'normal');assert(result.blockers.length);assert.equal(result.writesPerformed, false);assert.deepEqual(input, before);
@@ -31,9 +31,10 @@ test('progress conversion rejects blanks, null, coercion, fractional percentages
   }
   for (const [value, expected] of [['0', 0], ['0.15', 15], [1, 100], ['1.00', 100]]) assert.equal(validateFeedback([row('x', 1, { '当前进度百分比': value })], context).results[0].progressPercent, expected);
 });
-test('risk needs text and content review; paused is not silently treated as blocked', () => {
-  assert.equal(validateFeedback([row('x', 1, { '当前情况': { name: '存在风险' } })], context).results[0].verdict, 'reject');
-  assert.equal(validateFeedback([row('x', 1, { '当前情况': { name: '已暂停' } })], context).results[0].verdict, 'review');
+test('risk needs all three text fields and unsupported status rejects', () => {
+  assert.equal(validateFeedback([row('x', 1, { '当前情况': { name: '存在风险' } })], context).results[0].verdict, 'review');
+  assert.equal(validateFeedback([row('x', 1, { '当前情况': { name: '存在风险' }, '风险原因':'原因', '预估延期时间':'1天' })], context).results[0].verdict, 'review');
+  assert.equal(validateFeedback([row('x', 1, { '当前情况': { name: '已暂停' } })], context).results[0].verdict, 'reject');
 });
 test('terminal or missing states reject; project mismatch aborts; missing time rejects; duplicate IDs abort', () => {
   for (const state of [{ isDone: true }, { isArchived: true }, { isDone: undefined }]) assert.equal(validateFeedback([row('x', 1)], { ...context, task: { ...context.task, ...state } }).results[0].verdict, 'reject');
