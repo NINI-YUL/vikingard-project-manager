@@ -17,7 +17,7 @@ export async function setupFeedback(actor,api) {
       options('fb-source',data.sources,s=>s.baseId+' / '+s.sheetId+' · '+(s.enabled?'启用':'停用')+' · 首次确认 '+date(s.confirmedAt),s=>s.enabled?s.id:'','请选择已确认来源');
       options('fb-executor',data.executors,e=>e.id+' · '+(e.name??'尚未映射'),e=>e.id,'请选择当前实际执行者');
       options('fb-person',data.people,p=>p.name+' · '+p.id,p=>p.id,'请选择已确认人员');
-      options('fb-review',data.validations.filter(v=>v.verdict==='review'&&!v.approved&&v.situation==='存在风险'),v=>(v.taskTitle??'未知任务')+' · '+v.progressPercent+'% · '+v.reasons.join('；'),v=>v.validationId,'请选择待复核记录');
+      const latestByTask=new Map();for(const v of data.validations){const key=v.taskNumber??v.taskTitle??v.recordId;if(!latestByTask.has(key))latestByTask.set(key,v);}options('fb-review',[...latestByTask.values()].filter(v=>v.verdict==='review'&&!v.approved&&v.situation==='存在风险'),v=>(v.taskTitle??'未知任务')+' · '+v.progressPercent+'% · '+v.reasons.join('；'),v=>v.validationId,'请选择待复核记录');
     }
   }
   async function perform(form,action,success) {
@@ -34,3 +34,4 @@ export async function setupFeedback(actor,api) {
   const versions=await api('/api/versions');options('fb-version',versions,v=>v.displayName,v=>v.id);$('feedback-section').hidden=false;$('fb-admin').hidden=!admin;
   if(versions.length)await load(0);else say('尚未纳入受控版本。');
 }
+
