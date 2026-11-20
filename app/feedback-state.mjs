@@ -48,7 +48,8 @@ export function chooseCurrent(candidates,previous) {
 }
 
 // Call only inside the writer transaction, after acquiring security_state. All writers share this lock order.
-export async function revalidateFeedback(client) {
+// A version view refreshes that version; state-changing writers omit the scope and refresh every version.
+export async function revalidateFeedback(client,versionId=null) {
   await client.query('SELECT pg_advisory_xact_lock(184112,6)');
   const items=(await client.query('SELECT * FROM work_items')).rows;
   const versions=(await client.query('SELECT v.*,p.corp_id,p.teambition_project_id FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id')).rows;
@@ -58,7 +59,7 @@ export async function revalidateFeedback(client) {
   const prefixes=(await client.query('SELECT source_project_id,unique_id_prefix FROM source_bindings')).rows;
   const mappings=(await client.query(`SELECT e.*,p.active,i.enabled AS identity_enabled,i.confirmed,i.corp_id,i.union_id FROM executor_identity_mappings e JOIN people p ON p.id=e.person_id JOIN identity_mappings i ON i.person_id=p.id`)).rows;
   const statuses=(await client.query('SELECT * FROM status_mappings')).rows;
-  const records=(await client.query('SELECT r.*,r.created_time::double precision AS created_time,v.raw_source FROM feedback_records r JOIN feedback_revisions v ON v.id=r.latest_revision_id')).rows;
+  const records=(await client.query('SELECT r.*,r.created_time::double precision AS created_time,v.raw_source FROM feedback_records r JOIN feedback_revisions v ON v.id=r.latest_revision_id WHERE $1::uuid IS NULL OR r.work_item_id IS NULL OR EXISTS(SELECT 1 FROM work_items w WHERE w.id=r.work_item_id AND w.managed_version_id=$1)',[versionId])).rows;
   const candidates=new Map();
   for(const record of records) {
     const raw=record.raw_source,source=sources.find(s=>s.id===record.source_id);
@@ -66,8 +67,9 @@ export async function revalidateFeedback(client) {
     let task=items.find(i=>i.id===record.work_item_id);
     if(!record.work_item_id&&prefix) {
       const matches=items.filter(i=>versions.some(v=>v.id===i.managed_version_id&&v.source_project_id===source.source_project_id)&&prefix+'-'+i.visible_key===raw.fields?.['TB工单id']);
-      if(matches.length===1){task=matches[0];await client.query('UPDATE feedback_records SET work_item_id=$2 WHERE id=$1',[record.id,task.id]);}
+      if(matches.length===1){task=matches[0];if(!versionId||task.managed_version_id===versionId)await client.query('UPDATE feedback_records SET work_item_id=$2 WHERE id=$1',[record.id,task.id]);}
     }
+    if(versionId&&task&&task.managed_version_id!==versionId)continue;
     const version=versions.find(v=>v.id===task?.managed_version_id);
     const mapping=mappings.find(m=>m.source_project_id===source.source_project_id&&m.executor_source_id===task?.executor_source_id);
     const context={task,items,version,sync:syncs.find(s=>s.managed_version_id===version?.id),prefix,mapping,source,periods,status:statuses.find(s=>s.source_project_id===source.source_project_id&&s.status_id===task?.source_status_id)};
@@ -88,11 +90,15 @@ export async function revalidateFeedback(client) {
       candidates.get(task.id).push({...history,recordId:record.source_record_id,contentHash:hash({progress:evaluation.progressPercent,situation,note,person:mapping.person_id})});
     }
   }
-  const previous=(await client.query('SELECT * FROM current_feedback')).rows;
-  for(const item of items) {
-    const choice=chooseCurrent(candidates.get(item.id)??[],previous.find(p=>p.work_item_id===item.id));
-    await client.query(`INSERT INTO current_feedback(work_item_id,history_id,state,reasons) VALUES($1,$2,$3,$4) ON CONFLICT(work_item_id) DO UPDATE SET history_id=EXCLUDED.history_id,state=EXCLUDED.state,reasons=EXCLUDED.reasons,checked_at=clock_timestamp()`,[item.id,choice.historyId,choice.state,JSON.stringify(choice.reasons)]);
-  }
+  const previous=new Map((await client.query('SELECT c.* FROM current_feedback c JOIN work_items w ON w.id=c.work_item_id WHERE $1::uuid IS NULL OR w.managed_version_id=$1',[versionId])).rows.map(row=>[row.work_item_id,row]));
+  const current=items.filter(item=>!versionId||item.managed_version_id===versionId).map(item=>{
+    const choice=chooseCurrent(candidates.get(item.id)??[],previous.get(item.id));
+    return {work_item_id:item.id,history_id:choice.historyId,state:choice.state,reasons:choice.reasons};
+  });
+  // One statement keeps the same transaction and eligibility checks without a round trip per task.
+  await client.query(`INSERT INTO current_feedback(work_item_id,history_id,state,reasons)
+    SELECT work_item_id,history_id,state,reasons FROM jsonb_to_recordset($1::jsonb) AS rows(work_item_id uuid,history_id uuid,state text,reasons jsonb)
+    ON CONFLICT(work_item_id) DO UPDATE SET history_id=EXCLUDED.history_id,state=EXCLUDED.state,reasons=EXCLUDED.reasons,checked_at=clock_timestamp()`,[JSON.stringify(current)]);
 }
 export async function persistFeedback(client,source,records) {
   if(!Array.isArray(records)||records.length>10000||Buffer.byteLength(JSON.stringify(records))>8*1024*1024)throw new Error('反馈读取范围不合法');

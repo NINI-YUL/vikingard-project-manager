@@ -53,6 +53,18 @@ test('P06 PostgreSQL formal ingestion, revisions, eligibility, atomic failure, r
     assert.equal(await count('valid_feedback_history'),2);
     const before=await count('feedback_revisions');await ingest([first,second,raw('bad',99,baseTime+2000,{'任务':'wrong'})]);assert.equal(await count('feedback_revisions'),before);assert.equal(await count('valid_feedback_history'),2);
   });
+  await t.test('current values refresh in one statement and recreate missing unknown rows',async()=>{
+    const values=async client=>(await client.query('SELECT work_item_id,history_id,state,reasons FROM current_feedback ORDER BY work_item_id')).rows;
+    const before=await values(pool),writes=[];
+    await transaction(pool,async client=>{
+      await client.query('SELECT id FROM security_state WHERE id=1 FOR UPDATE');
+      await client.query("DELETE FROM current_feedback WHERE state='unknown'");
+      await revalidateFeedback({query:async(sql,params)=>{if(sql.startsWith('INSERT INTO current_feedback'))writes.push(sql);return client.query(sql,params);}});
+      assert.deepEqual(await values(client),before);
+    });
+    assert.equal(writes.length,1);
+    assert.equal(before.length,Number((await pool.query('SELECT count(*) AS n FROM work_items')).rows[0].n));
+  });
   await t.test('edits retain original creation order and revisions, including A-B-A; changed creation timestamp is rejected',async()=>{
     await ingest([{...first,modifiedTime:baseTime+9000,fields:{...first.fields,'当前进度百分比':0.3}},second]);assert.equal((await current()).progressPercent,70);
     await ingest([first,second]);assert.equal((await current()).progressPercent,70);
@@ -149,6 +161,21 @@ test('P06 PostgreSQL formal ingestion, revisions, eligibility, atomic failure, r
         }
       }finally{await browser.close();}
     }
+  });
+  await t.test('version views leave other current rows untouched and keep global identity ambiguity',async()=>{
+    const other=await enrollVersion(pool,{corpId:'fake',projectId:project,projectName:'隔离项目',versionId:'e'.repeat(24),versionName:'另一隔离版本',ownerId:owner.id,reason:'跨版本范围回归'},owner.id);
+    await syncVersion(pool,other.id,source.read,{actorId:owner.id,reason:'跨版本重复编号回归'});
+    const otherRows=async()=>(await pool.query('SELECT c.* FROM current_feedback c JOIN work_items w ON w.id=c.work_item_id WHERE w.managed_version_id=$1 ORDER BY c.work_item_id',[other.id])).rows;
+    const before=await otherRows();assert.equal(before.length,2);
+    await ingest([first,second,raw('ambiguous',85,baseTime+7000)]);
+    const checked=await otherRows();await feedbackOverview(pool,viewer,version.id);assert.deepEqual(await otherRows(),checked);
+    assert.equal((await pool.query("SELECT work_item_id FROM feedback_records WHERE source_record_id='ambiguous'")).rows[0].work_item_id,null);
+    assert.equal((await current()).progressPercent,70);
+    await changePerson(pool,owner.id,people.worker.id,{mappingEnabled:false,reason:'全局身份撤销回归'},'identity');
+    assert.notDeepEqual(await otherRows(),checked);
+    assert.equal((await current()).progressPercent,null);
+    await changePerson(pool,owner.id,people.worker.id,{mappingEnabled:true,reason:'全局身份恢复回归'},'identity');
+    assert.equal((await current()).progressPercent,70);
   });
  }finally{if(server)await new Promise(r=>server.close(r));await pool.end();assert.match(schema,/^p06_[a-f0-9]{16}$/);await setup.query('DROP SCHEMA '+schema+' CASCADE');await setup.end();}
 });

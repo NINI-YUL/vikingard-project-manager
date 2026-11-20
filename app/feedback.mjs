@@ -69,9 +69,9 @@ export async function feedbackOverview(pool,actor,versionId,offset=0) {
   if(!uuid(versionId)||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new Denied(400,'反馈查询参数不合法');
   return transaction(pool,async client=>{
     await requireCurrentRole(client,actor.id,'viewer');
-    await revalidateFeedback(client);
     const version=(await client.query('SELECT source_project_id FROM managed_versions WHERE id=$1',[versionId])).rows[0];
     if(!version)throw new Denied(404,'版本不存在');
+    await revalidateFeedback(client,versionId);
     const items=(await client.query(`SELECT w.id,w.source_task_id AS "sourceTaskId",w.visible_key AS "visibleKey",w.title,c.state,c.reasons,h.progress_percent AS "progressPercent",h.submitted_at AS "submittedAt",h.situation,h.note FROM work_items w LEFT JOIN current_feedback c ON c.work_item_id=w.id LEFT JOIN valid_feedback_history h ON h.id=c.history_id WHERE w.managed_version_id=$1 ORDER BY w.source_task_id LIMIT 100 OFFSET $2`,[versionId,offset])).rows;
     const total=(await client.query('SELECT count(*)::int AS n FROM work_items WHERE managed_version_id=$1',[versionId])).rows[0].n;
     const validations=(await client.query(`SELECT r.source_record_id AS "recordId",COALESCE(w.title,v.raw_source->'fields'->>'任务','未知任务') AS "taskTitle",w.visible_key AS "taskNumber",v.revision_hash AS "revisionHash",v.observed_at AS "observedAt",f.id AS "validationId",EXISTS(SELECT 1 FROM feedback_reviews WHERE validation_id=f.id) AS approved,v.raw_source->'fields'->'当前情况'->>'name' AS situation,f.verdict,f.reasons,f.progress_percent AS "progressPercent",r.created_time AS "platformCreatedTime" FROM feedback_records r JOIN feedback_sources s ON s.id=r.source_id JOIN feedback_revisions v ON v.record_id=r.id LEFT JOIN work_items w ON w.id=r.work_item_id LEFT JOIN LATERAL(SELECT * FROM feedback_validations f WHERE f.revision_id=v.id ORDER BY (f.id=r.current_validation_id) DESC,checked_at DESC,id DESC LIMIT 1) f ON true WHERE s.source_project_id=$1 ORDER BY v.observed_at DESC,v.id LIMIT 100 OFFSET $2`,[version.source_project_id,offset])).rows;

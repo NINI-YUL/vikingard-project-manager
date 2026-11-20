@@ -6,6 +6,7 @@ import {randomBytes} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import os from 'node:os';
+import {get} from 'node:http';
 import {readJson} from '../app/config.mjs';
 import {poolFor,migrate,transaction} from '../app/database.mjs';
 import {bootstrap,establishSession} from '../app/security.mjs';
@@ -15,6 +16,13 @@ import {persistFeedback} from '../app/feedback-state.mjs';
 import {createApplication} from '../app/server.mjs';
 import {fingerprint} from './backup-to-share.mjs';
 
+// The restart probe must open a socket to the new service, not reuse fetch's closed keep-alive socket.
+export function reconnectedSessionStatus(origin,session){
+ return new Promise((resolve,reject)=>{
+  const request=get(origin+'/api/versions',{agent:false,headers:{Cookie:'vpm_session='+session.token}},response=>{response.resume();response.on('end',()=>resolve(response.statusCode));response.on('error',reject);});
+  request.setTimeout(30000,()=>request.destroy(new Error('reconnect timeout')));request.on('error',reject);
+ });
+}
 const project='a'.repeat(24),corp='resource-test',execute=promisify(execFile);
 const hex=n=>n.toString(16).padStart(24,'0');
 export function resourceFixture(versionIndex,taskCount){
@@ -85,9 +93,9 @@ export async function runResourceCheck(){
    const dbBytes=Number((await pool.query('SELECT pg_database_size(current_database()) AS n')).rows[0].n);report.stages.push({label:'size',tasks:total,dbBytes});save();
    if(process.memoryUsage().rss>1024**3||os.freemem()<1024**3)throw Error('resource headroom stop');
   }
-  phase('restart');await new Promise(resolve=>server.close(resolve));server=null;await pool.end();pool=poolFor({...config,database});
-  const restart=await time(async()=>{server=createApplication(pool,{origin,host:'127.0.0.1',port:43191,loginEnabled:true,dingtalk:{corpId:corp}});await new Promise(resolve=>server.listen(43191,'127.0.0.1',resolve));assert.equal((await request('/api/versions',sessions[0])).status,200);});report.stages.push({label:'application-reconnect',ms:restart.ms});
-  phase('backup');const dump=join(output,'synthetic.dump');const expected=await fingerprint(pool);
+  stage='restart';phase('restart');await new Promise(resolve=>server.close(resolve));server=null;await pool.end();pool=poolFor({...config,database});
+  const restart=await time(async()=>{server=createApplication(pool,{origin,host:'127.0.0.1',port:43191,loginEnabled:true,dingtalk:{corpId:corp}});await new Promise(resolve=>server.listen(43191,'127.0.0.1',resolve));assert.equal(await reconnectedSessionStatus(origin,sessions[0]),200);});report.stages.push({label:'application-reconnect',ms:restart.ms});
+  stage='backup';phase('backup');const dump=join(output,'synthetic.dump');const expected=await fingerprint(pool);
   const run=async(tool,args)=>{const result=await execute('F:/VikingPM/runtime/pgsql/bin/'+tool+'.exe',args,{windowsHide:true,timeout:120000,maxBuffer:1024*1024,env:{...process.env,PGPASSWORD:config.password,PGCONNECT_TIMEOUT:'10'}});assert.equal(result.stderr.trim(),'','backup warning');};
   const common=['--host=127.0.0.1','--port=55432','--username='+config.user,'--no-password'];
   const backup=await time(()=>run('pg_dump',[...common,'--dbname='+database,'--format=custom','--exclude-table-data=public.login_sessions','--exclude-table-data=public.oauth_requests','--file='+dump]));
@@ -96,7 +104,7 @@ export async function runResourceCheck(){
   const restored=poolFor({...config,database:restoreDb});try{assert.deepEqual(await fingerprint(restored),expected);assert.equal(Number((await restored.query('SELECT count(*) AS n FROM login_sessions')).rows[0].n),0);}finally{await restored.end();}
   report.stages.push({label:'backup-restore',backupMs:backup.ms,restoreMs:restore.ms,bytes:statSync(dump).size,exactMatch:true,sessionsExcluded:true});
   report.status='passed';
- }catch(error){report.status='failed';report.failedStage=stage;report.errorType=error.name;report.safeCode=typeof error.code==='string'&&/^[A-Z0-9_]+$/.test(error.code)?error.code:null;process.exitCode=1;}
+ }catch(error){report.status='failed';report.failedStage=stage;report.errorType=error.name;report.safeCauseCode=/^[A-Z0-9_]+$/.test(error.cause?.code??'')?error.cause.code:null;report.safeCode=typeof error.code==='string'&&/^[A-Z0-9_]+$/.test(error.code)?error.code:null;process.exitCode=1;}
  finally{clearInterval(timer);sample();if(server)await new Promise(resolve=>server.close(resolve));await pool?.end();await admin?.end();report.finishedAt=new Date().toISOString();save();console.log(JSON.stringify({status:report.status,failedStage:report.failedStage,output,stages:report.stages}));}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)await runResourceCheck();
