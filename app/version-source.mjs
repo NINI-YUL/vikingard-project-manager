@@ -109,6 +109,7 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
     if (!version) throw new Denied(404,'版本不存在');
     if (version.lifecycle !== 'enrolled') throw new Denied(409,'该版本未处于纳入状态');
     const knownIds=(await client.query('SELECT source_task_id FROM work_items WHERE managed_version_id=$1',[versionId])).rows.map(row=>row.source_task_id);
+    // Source reads can outlast the polling interval; completion and retry clocks must not use transaction now().
     const runId=randomUUID();
     const startedAt = new Date(); let snapshot,items,errorCode;
     try { snapshot = await readSource({projectId:version.projectId,sourceVersionId:version.source_version_id,corpId:version.corpId,knownTaskIds:knownIds}); }
@@ -117,9 +118,9 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
     // Recheck under the same security lock as revocation before committing any source facts.
     await authorizeSync(client,versionId,actorId);
     if (errorCode) {
-      await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,error_code,error_detail) VALUES($1,$2,$3,now(),'failed',$4,$5)",[runId,versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
+      await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,error_code,error_detail) VALUES($1,$2,$3,clock_timestamp(),'failed',$4,$5)",[runId,versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
       await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_status='failed',last_error_code=$3,last_error_detail=$4 WHERE managed_version_id=$1",[versionId,startedAt,errorCode,'本次同步失败，已有事实保留']);
-      await client.query("UPDATE source_sync_states SET next_due_at=now()+LEAST($2,60*power(2,LEAST(failure_count,8)))::integer * interval '1 second',failure_count=failure_count+1 WHERE managed_version_id=$1",[versionId,intervalSeconds]);
+      await client.query("UPDATE source_sync_states SET next_due_at=clock_timestamp()+LEAST($2,60*power(2,LEAST(failure_count,8)))::integer * interval '1 second',failure_count=failure_count+1 WHERE managed_version_id=$1",[versionId,intervalSeconds]);
       await revalidateFeedback(client);
       await audit(client,actorId,'version.sync.failed',{versionId,errorCode},why);
       return {status:'failed',errorCode,importedCount:0};
@@ -136,9 +137,9 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,now(),$18)
       ON CONFLICT(managed_version_id,source_task_id) DO UPDATE SET visible_key=EXCLUDED.visible_key,title=EXCLUDED.title,type_id=EXCLUDED.type_id,type_name=EXCLUDED.type_name,category=EXCLUDED.category,function_name=EXCLUDED.function_name,function_resolution=EXCLUDED.function_resolution,parent_source_task_id=EXCLUDED.parent_source_task_id,parent_missing=EXCLUDED.parent_missing,source_status_id=EXCLUDED.source_status_id,raw_status=EXCLUDED.raw_status,availability=EXCLUDED.availability,structure_issues=EXCLUDED.structure_issues,source_updated_at=EXCLUDED.source_updated_at,last_synced_at=now(),raw_source=EXCLUDED.raw_source`,[randomUUID(),versionId,item.sourceTaskId,item.visibleKey,item.title,item.typeId,item.typeName,item.category,item.functionName,item.functionResolution,item.parentSourceTaskId,item.parentMissing,item.sourceStatusId,item.rawStatus,item.availability,JSON.stringify(item.structureIssues),item.sourceUpdatedAt,JSON.stringify(item.rawSource)]);
     await persistHistory(client,version,items,snapshot);
-    await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,imported_count) VALUES($1,$2,$3,now(),'succeeded',$4)",[runId,versionId,startedAt,items.length]);
-    await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_success_at=now(),last_status='succeeded',last_error_code=NULL,last_error_detail=NULL WHERE managed_version_id=$1",[versionId,startedAt]);
-    await client.query("UPDATE source_sync_states SET cursor=$2,failure_count=0,next_due_at=now()+$3::integer * interval '1 second' WHERE managed_version_id=$1",[versionId,runId,intervalSeconds]);
+    await client.query("INSERT INTO source_sync_runs(id,managed_version_id,started_at,finished_at,status,imported_count) VALUES($1,$2,$3,clock_timestamp(),'succeeded',$4)",[runId,versionId,startedAt,items.length]);
+    await client.query("UPDATE source_sync_states SET last_attempt_at=$2,last_success_at=clock_timestamp(),last_status='succeeded',last_error_code=NULL,last_error_detail=NULL WHERE managed_version_id=$1",[versionId,startedAt]);
+    await client.query("UPDATE source_sync_states SET cursor=$2,failure_count=0,next_due_at=clock_timestamp()+$3::integer * interval '1 second' WHERE managed_version_id=$1",[versionId,runId,intervalSeconds]);
     const result = {status:'succeeded',importedCount:items.length,issueCount:items.filter(i=>i.structureIssues.length).length,...(snapshot.reconciliations?.length?{reconciledCount:snapshot.reconciliations.length}:{})};
     await revalidateFeedback(client);
     await audit(client,actorId,'version.sync.succeeded',{versionId,...result},why);

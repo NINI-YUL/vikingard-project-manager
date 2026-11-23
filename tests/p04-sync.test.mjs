@@ -57,6 +57,19 @@ test('P04 persistent checkpoints, histories, retry, restart pickup and owner gat
   await createPoller(pool,source,opts).runOnce();assert.equal(calls,1);assert.equal((await state()).failure_count,0);
   const automatic=(await pool.query("SELECT actor_id FROM audit_events WHERE reason LIKE '系统轮询%' ORDER BY id DESC LIMIT 1")).rows[0];assert.equal(automatic.actor_id,null);
   await createPoller(pool,source,opts).runOnce();assert.equal(calls,1);
+  for(const failRead of [false,true]){
+   let readCompleted;
+   const result=await syncVersion(pool,id,async()=>{
+    readCompleted=(await pool.query('SELECT pg_sleep(0.05),clock_timestamp() AS at')).rows[0].at;
+    if(failRead)throw new Error('delayed failure');
+    return snapshot();
+   },options);
+   assert.equal(result.status,failRead?'failed':'succeeded');
+   const checkpoint=await state(),run=(await pool.query('SELECT started_at,finished_at FROM source_sync_runs WHERE managed_version_id=$1 ORDER BY started_at DESC LIMIT 1',[id])).rows[0];
+   assert(checkpoint.next_due_at.getTime()>=readCompleted.getTime()+(failRead?60:900)*1000,'next attempt must wait after source reading, not transaction start');
+   assert(run.finished_at>=readCompleted);assert(run.finished_at>=run.started_at);
+   if(!failRead)assert(checkpoint.last_success_at>=readCompleted);
+  }
   await pool.query('UPDATE managed_versions SET owner_id=NULL WHERE id=$1',[id]);await pool.query("UPDATE source_sync_states SET next_due_at=now()-interval '1 second' WHERE managed_version_id=$1",[id]);
   assert.deepEqual(await createPoller(pool,source,opts).runOnce(),[]);assert.equal(calls,1);
  }finally{await pool.end();assert.match(schema,/^p04_[a-f0-9]{16}$/);await setup.query('DROP SCHEMA '+schema+' CASCADE');await setup.end();}
