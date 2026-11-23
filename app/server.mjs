@@ -8,7 +8,7 @@ import { Denied, requireRole, authenticate, logout, listPeople, changePerson, cr
 import { beginLogin, completeLogin } from './dingtalk.mjs';
 import { enrollVersion, syncVersion } from './version-source.mjs';
 
-const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
+const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/acceptance', ['text/html; charset=utf-8','acceptance.html']],['/acceptance.html', ['text/html; charset=utf-8','acceptance.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/shell.js',['text/javascript; charset=utf-8','shell.js']],['/shell.css',['text/css; charset=utf-8','shell.css']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
 function cookies(req) {
   const result = {};
   for (const item of (req.headers.cookie ?? '').split(';')) {
@@ -41,7 +41,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         const [type,file] = assets.get(path); res.writeHead(200,{'Content-Type':type}); return res.end(readFileSync(new URL('public/'+file,import.meta.url)));
       }
       if (req.method === 'GET' && path === '/healthz') {
-        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P07',loginEnabled:config.loginEnabled}); }
+        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P09',loginEnabled:config.loginEnabled}); }
         catch { return json(res,503,{status:'unavailable'}); }
       }
       if (req.method === 'GET' && path === '/auth/dingtalk/start') {
@@ -87,7 +87,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         return json(res,200,path.endsWith('/verify')?await verifyMappings(pool,actor,input):await changeManagement(pool,actor,input,path.endsWith('/save')));
       }
       if (req.method === 'GET' && path === '/api/me') return json(res,200,actor);
-      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P07',sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'分层规则、状态语义、工作日历与阶段计算已接入；缺失证据保留未知。'});
+      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P09',sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'P09 正式页面壳、真实版本列表与任务下钻已接入；完整管理页面仍在开发。'});
       if (req.method === 'GET' && path === '/api/version-people') {
         requireRole(actor,'admin');
         return json(res,200,(await pool.query('SELECT p.id,p.display_name AS "displayName" FROM people p JOIN identity_mappings i ON i.person_id=p.id WHERE p.active AND i.enabled AND i.confirmed AND i.corp_id=$1 ORDER BY p.display_name,p.id',[config.dingtalk.corpId])).rows);
