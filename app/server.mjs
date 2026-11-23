@@ -8,7 +8,7 @@ import { Denied, requireRole, authenticate, logout, listPeople, changePerson, cr
 import { beginLogin, completeLogin } from './dingtalk.mjs';
 import { enrollVersion, syncVersion } from './version-source.mjs';
 
-const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/acceptance', ['text/html; charset=utf-8','acceptance.html']],['/acceptance.html', ['text/html; charset=utf-8','acceptance.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/shell.js',['text/javascript; charset=utf-8','shell.js']],['/shell.css',['text/css; charset=utf-8','shell.css']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
+const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/acceptance', ['text/html; charset=utf-8','acceptance.html']],['/acceptance.html', ['text/html; charset=utf-8','acceptance.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/shell.js',['text/javascript; charset=utf-8','shell.js']],['/shell.css',['text/css; charset=utf-8','shell.css']],['/function-catalog.mjs',['text/javascript; charset=utf-8','../function-catalog.mjs']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
 function cookies(req) {
   const result = {};
   for (const item of (req.headers.cookie ?? '').split(';')) {

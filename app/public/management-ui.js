@@ -5,7 +5,8 @@ const markerLabels={development_start:'开发开始',development_end:'开发结�
 function node(tag,text){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;}
 function option(select,value,label){const el=node('option',label);el.value=value;select.append(el);}
 function table(heads,rows){const wrap=node('div');wrap.className='table-wrap';wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label',heads[0]+'表格');const table=node('table'),head=node('thead'),body=node('tbody'),tr=node('tr');for(const h of heads)tr.append(node('th',h));head.append(tr);for(const cells of rows){const row=node('tr');for(const cell of cells)row.append(node('td',cell));body.append(row);}table.append(head,body);wrap.append(table);return wrap;}
-export async function setupManagement(actor,api){
+export async function setupManagement(actor,api,root=document){
+  const $=id=>root.id===id?root:root.querySelector('#'+id);
   const editable=['admin','owner'].includes(actor.role);let data,initialRules,pending,projectId,draft=new Map();
   const tell=text=>{$('mg-feedback').textContent=text;};
   const run=async action=>{try{await action();}catch(error){tell(error.message);}};

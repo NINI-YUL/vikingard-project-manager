@@ -1,3 +1,5 @@
+import { setupManagement } from './management-ui.js';
+import { functions as FUNCTION_NAMES } from '../function-catalog.mjs';
 const ROLE_NAMES = { none: '无后台权限', viewer: '查看者', admin: '系统管理员', owner: '系统所有者' };
 const SYNC_NAMES = { never: '待首次同步', running: '同步中', succeeded: '同步成功', failed: '同步失败，保留原数据' };
 const PRESENCE_NAMES = {
@@ -23,7 +25,8 @@ const state = {
   management: new Map(),
   tasks: new Map(),
   filters: new Map(),
-  actionTab: 'delivery'
+  actionTab: 'delivery',
+  routeRevision: 0
 };
 
 class ApiError extends Error {
@@ -165,6 +168,7 @@ function api(path, { method = 'GET', body, headers = {} } = {}) {
       throw new ApiError(401, '401：登录已过期，请重新登录。');
     }
     if (!response.ok) throw new ApiError(response.status, response.status + '：' + (data.error ?? '请求失败'));
+    if (method === 'POST' && ['/api/management/save', '/api/management/verify'].includes(path)) state.management.clear();
     return data;
   })();
 }
@@ -227,6 +231,47 @@ export function summarizeManagement(management) {
     developmentUnknown: items.filter(item => item.timing?.development?.unknown).length,
     testUnknown: items.filter(item => item.timing?.test?.unknown).length
   };
+}
+
+export function actionHash(versionId = '', functions = [], tab = null) {
+  const query = new URLSearchParams();
+  if (versionId) query.set('version', versionId);
+  for (const name of functions) query.append('function', name);
+  if (tab === 'data') query.set('tab', 'data');
+  return '#/action' + (query.size ? '?' + query : '');
+}
+
+export function selectedFunctions(raw) {
+  const query = new URLSearchParams(String(raw).split('?')[1] ?? '');
+  return [...new Set(query.getAll('function'))];
+}
+
+export function scopeActionContexts(contexts, versionId, functions = [], dataTab = false) {
+  return contexts.filter(context => !versionId || context.version.id === versionId).map(context => ({
+    ...context,
+    management: context.management ? { ...context.management, items: context.management.items.filter(item =>
+      dataTab || (item.kind === 'professional' && (!functions.length || functions.includes(item.functionName)))) } : null
+  }));
+}
+
+function syncFunctionFilter(current) {
+  $('function-filter').hidden = current.name !== 'action' || current.tab === 'data';
+  const selected = selectedFunctions(current.raw);
+  $('function-summary').textContent = '职能：' + (selected.length ? selected.join('、') : '全部');
+  const options = $('function-options');
+  options.replaceChildren();
+  for (const name of ['', ...FUNCTION_NAMES]) {
+    const label = node('label');
+    const input = node('input');
+    input.type = 'checkbox';
+    input.checked = name ? selected.includes(name) : selected.length === 0;
+    input.addEventListener('change', () => {
+      const next = !name ? [] : input.checked ? [...selected, name] : selected.filter(value => value !== name);
+      navigate(actionHash(current.versionId, next, current.tab));
+    });
+    label.append(input, document.createTextNode(name || '全部'));
+    options.append(label);
+  }
 }
 
 export function parseHash(raw = '') {
@@ -295,7 +340,7 @@ function setNav(route) {
 function populateVersionSelect(versions) {
   const select = $('version-select');
   select.replaceChildren();
-  const all = node('option', null, '全部版本');
+  const all = node('option', null, '全部活跃版本');
   all.value = '';
   select.append(all);
   for (const version of versions) {
@@ -313,44 +358,51 @@ function syncVersionSelect(route) {
 
 async function route() {
   if (!state.actor) return;
+  const revision = ++state.routeRevision;
   clearMessage();
   const current = parseHash(location.hash);
   if (!location.hash) history.replaceState(null, '', '#/action');
   setNav(current);
   syncVersionSelect(current);
+  syncFunctionFilter(current);
   const view = $('view');
+  const content = node('div');
   view.replaceChildren(loading());
   try {
-    await renderRoute(current);
+    await renderRoute(current, content, revision);
   } catch (error) {
-    if (error.status === 401) return;
-    view.replaceChildren(errorCard(error.message ?? '页面读取失败', () => route()));
+    if (error.status === 401 || revision !== state.routeRevision) return;
+    content.replaceChildren(errorCard(error.message ?? '页面读取失败', () => route()));
   }
+  if (!state.actor || revision !== state.routeRevision) return;
+  view.replaceChildren(...content.childNodes);
   view.focus({ preventScroll: true });
   window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
-async function renderRoute(current) {
+async function renderRoute(current, view, revision) {
   const versions = await loadVersions();
+  if (revision !== state.routeRevision) return;
   populateVersionSelect(versions);
   syncVersionSelect(current);
-  if (current.name === 'action') return renderAction(current);
-  if (current.name === 'versions') return renderVersions();
-  if (current.name === 'versionDetail') return renderVersionDetail(current);
-  if (current.name === 'requirements') return renderRequirements(current);
-  if (current.name === 'people') return renderPeople();
-  if (current.name === 'anomalies') return renderAnomalies();
-  if (current.name === 'participation') return renderParticipation();
-  if (current.name === 'config') return renderConfig();
-  if (current.name === 'history') return renderHistory();
+  if (current.name === 'action') return renderAction(current, view);
+  if (current.name === 'versions') return renderVersions(view);
+  if (current.name === 'versionDetail') return renderVersionDetail(current, view);
+  if (current.name === 'requirements') return renderRequirements(current, view);
+  if (current.name === 'people') return renderPeople(view);
+  if (current.name === 'anomalies') return renderAnomalies(current, view);
+  if (current.name === 'participation') return renderParticipation(view);
+  if (current.name === 'config') return renderConfig(view, current);
+  if (current.name === 'history') return renderHistory(view);
   setTitle('页面不存在', '请从左侧导航重新选择');
-  $('view').replaceChildren(errorCard('该地址没有对应页面，可能来自旧链接。', () => navigate('#/action')));
+  view.replaceChildren(errorCard('该地址没有对应页面，可能来自旧链接。', () => navigate('#/action')));
 }
 
-function tabsNode(active) {
+function tabsNode(active, current) {
+  const functions = selectedFunctions(current.raw);
   const tabs = node('div', 'tabs');
-  const delivery = link('风险与到期', '#/action', 'tab' + (active === 'delivery' ? ' active' : ''));
-  const data = link('数据待处理', '#/action?tab=data', 'tab' + (active === 'data' ? ' active' : ''));
+  const delivery = link('风险与到期', actionHash(current.versionId, functions), 'tab' + (active === 'delivery' ? ' active' : ''));
+  const data = link('数据待处理', actionHash(current.versionId, functions, 'data'), 'tab' + (active === 'data' ? ' active' : ''));
   tabs.append(delivery, data);
   return tabs;
 }
@@ -396,7 +448,7 @@ function buildTable(caption, columns, rows, emptyText) {
   return wrap;
 }
 
-function dataTabNode(contexts) {
+function dataTabNode(contexts, versionId = null) {
   const wrap = node('div');
   const summary = contexts.map(item => ({ ...item, counts: item.management ? summarizeManagement(item.management) : null }));
   const failed = summary.filter(item => item.error).length;
@@ -439,92 +491,121 @@ function dataTabNode(contexts) {
   const notice = node('div', 'notice');
   notice.append(node('p', null, '本页仅汇总版本计算返回的当前问题标记。完整异常事项、去重口径、处理入口与审计记录归“异常与审计”后续批次；反馈原始校验、同步失败和投递失败尚未并入本页。'));
   const actions = node('div', 'section-actions');
-  actions.append(link('查看异常与审计', '#/anomalies', 'button small'), link('打开功能验收', '/acceptance', 'button small'));
+  actions.append(link('查看异常与审计', '#/anomalies' + (versionId ? '?version=' + encodeURIComponent(versionId) : ''), 'button small'), link('打开功能验收', '/acceptance', 'button small'));
   notice.append(actions);
   wrap.append(node('div', null, ''), notice);
   return wrap;
 }
 
-async function renderAction(current) {
-  setTitle('行动中心', '全部活跃版本 · 风险与到期与数据待处理分开呈现');
-  const view = $('view');
-  const contexts = await loadVersionContexts();
-  updateAnomalyBadge(contexts);
+async function renderAction(current, view) {
+  setTitle('行动中心', '全部活跃版本 · 两个页签分别处理交付事项与数据事项');
+
+  const allContexts = await loadVersionContexts();
+  updateAnomalyBadge(allContexts);
+  if (current.versionId && !allContexts.some(context => context.version.id === current.versionId)) {
+    view.replaceChildren(errorCard('所选版本不存在或已退出活跃范围，请重新选择版本。'));
+    return;
+  }
   const active = current.tab === 'data' ? 'data' : 'delivery';
-  state.actionTab = active;
-  const wrap = node('div');
-  wrap.append(tabsNode(active));
+  const contexts = scopeActionContexts(allContexts, current.versionId, selectedFunctions(current.raw), active === 'data');
+  const wrap = node('div', 'action-page');
+  wrap.append(tabsNode(active, current));
   if (active === 'data') {
-    wrap.append(dataTabNode(contexts));
+    wrap.append(dataTabNode(contexts, current.versionId));
     view.replaceChildren(wrap);
     return;
   }
 
-  const summary = contexts.map(item => ({ ...item, counts: item.management ? summarizeManagement(item.management) : null }));
-  const failed = summary.filter(item => item.error).length;
-  const known = summary.filter(item => item.counts);
-  const overdue = failed ? '未知' : known.reduce((total, item) => total + item.counts.overdue, 0);
-  const dueSoon = failed ? '未知' : known.reduce((total, item) => total + item.counts.dueSoon, 0);
-
+  const failed = contexts.filter(context => context.error).length;
+  const facts = contexts.flatMap(context => (context.management?.items ?? []).map(item => ({ ...item, version: context.version })));
+  const overdue = facts.filter(item => item.due?.overdue);
+  const dueSoon = facts.filter(item => item.due?.dueSoon);
   const scope = node('div', 'scope');
-  scope.append(
-    node('span', null, '当前范围：' + summary.length + ' 个已纳入版本'),
-    node('span', 'note', '风险等级与行动队列待后续批次接入；本页只显示已计算事实')
-  );
+  scope.append(node('span', null, '当前范围：' + contexts.length + ' 个活跃版本'));
+  const guide = node('details', 'scope-guide');
+  guide.append(node('summary', null, '统计口径与说明'), node('p', null,
+    '仅统计核心需求下的核心专业子单。三日内按公司工作日历计算；缺少计划时间或状态映射的工单无法判断到期。职能筛选不影响数据待处理。风险反馈尚未接入，不把缺失数据填成正常。'));
+  scope.append(node('span', 'note', '仅统计核心需求下的核心专业子单'), guide);
   wrap.append(scope);
+  if (failed) wrap.append(errorCard(failed + ' 个版本读取失败。以下仅列出读取成功的工单，总数未知。', () => route()));
+  const unknownDue = facts.filter(item => item.due == null && !['delivered', 'non_delivery'].includes(item.semantic)).length;
+  if (unknownDue) wrap.append(node('p', 'note', unknownDue + ' 张核心专业子单因计划、状态或来源问题无法判断到期，请在异常与审计核对。'));
 
   const metrics = node('div', 'metrics');
   metrics.append(
-    metricCard('高风险需求', '待接入', '风险规则尚未在本批启用', 'muted'),
-    metricCard('需关注需求', '待接入', '不把缺失数据填成正常', 'muted'),
-    metricCard('风险工单', '待接入', '反馈风险与阻塞判断待后续批次', 'muted'),
-    metricCard('已逾期工单', overdue, failed ? failed + ' 个版本读取失败，不能汇总' : '按当前计划截止判断', 'red'),
-    metricCard('即将到期工单', dueSoon, failed ? failed + ' 个版本读取失败，不能汇总' : '按当前工作日历判断', 'amber')
+    metricCard('高风险需求', '待接入', '风险等级尚未接入', 'red'),
+    metricCard('需关注需求', '待接入', '风险等级尚未接入', 'amber'),
+    metricCard('风险工单', '待接入', '反馈风险尚未接入', 'blue'),
+    metricCard('已逾期工单', failed || unknownDue ? '未知' : overdue.length, unknownDue ? '已知逾期 ' + overdue.length + ' 张；另 ' + unknownDue + ' 张到期未知' : '按已知计划与当前状态判断', 'red'),
+    metricCard('三日内到期', failed || unknownDue ? '未知' : dueSoon.length, unknownDue ? '已知三日内到期 ' + dueSoon.length + ' 张；另 ' + unknownDue + ' 张到期未知' : '按公司工作日历计算', 'blue')
   );
   wrap.append(metrics);
 
-  const rows = summary.map(item => {
+  const grid = node('div', 'action-grid');
+  const main = node('div', 'action-main');
+  const side = node('div', 'action-side');
+  function section(title, count) {
+    const card = node('section', 'card action-section');
+    const head = node('div', 'section-head');
+    head.append(node('h2', 'section-title', title));
+    if (count != null) head.append(node('span', 'pill', count));
+    card.append(head);
+    return card;
+  }
+  const risk = section('风险关注');
+  risk.append(emptyCard('风险等级与反馈风险尚未接入，暂不能判断高风险或需关注需求。'));
+  main.append(risk);
+
+  const overdueCard = section('已逾期工单', failed ? '总数未知' : overdue.length + ' 张工单');
+  const rows = overdue.map(item => {
     const row = node('tr');
-    const versionCell = node('td');
-    versionCell.append(link(item.version.displayName, versionHash(item.version.id), 'version-name'), node('div', 'cell-note', item.version.projectName ?? ''));
-    row.append(versionCell, node('td', null, ownerText(item.version)));
-    if (item.error) {
-      row.append(statusCell(item.version));
-      const error = node('td');
-      error.append(node('div', null, '读取失败'), node('div', 'cell-note', item.error.message));
-      row.append(error, node('td', null, '未知'), node('td', null, '未知'), node('td', null, '未知'), node('td', null, '未知'), node('td', null, '未知'));
-    } else {
-      const progress = item.management.progress;
-      const opt = optimizationSummary(progress);
-      const optCell = node('td');
-      optCell.append(node('div', null, opt.text), node('div', 'cell-note', opt.detail));
-      row.append(
-        statusCell(item.version),
-        stageCell(progress, 'foundation'),
-        stageCell(progress, 'detail'),
-        stageCell(progress, 'test'),
-        optCell,
-        node('td', null, item.counts.overdue + ' 张'),
-        node('td', null, item.counts.issueTasks + ' 张')
-      );
-    }
-    row.append(node('td', null, formatDate(item.version.lastSuccessAt)));
+    const identity = node('td');
+    identity.append(link(item.title, taskHash(item.version.id, 0, item.sourceTaskId), 'row-link'),
+      node('div', 'cell-note', (item.requirementTitle || '所属需求待核对') + ' · ' + item.version.displayName));
+    const days = node('td');
+    days.append(node('span', 'overdue-days', '逾期 ' + item.due.workingDays + ' 日'));
+    row.append(identity, node('td', null, item.executorName || '身份待核对'), days, node('td', null, item.rawStatus || '状态未知'));
     return row;
   });
+  overdueCard.append(buildTable('已逾期核心专业子单', ['工单 / 所属需求', '执行者', '逾期', '当前情况'], rows,
+    failed ? '暂无可读取的逾期明细，不能判断为零。' : unknownDue ? '可判断的工单中暂无逾期，其余工单到期未知。' : '当前范围暂无已逾期核心专业子单。'));
+  main.append(overdueCard);
 
-  wrap.append(buildTable('行动中心版本汇总', ['版本', '负责人', '来源同步', '基础流程', '细节完整', '测试阶段', '优化需求', '已逾期', '数据异常', '最近同步'], rows, '尚未纳入受控版本。管理员可从功能验收纳入版本。'));
-  const notice = node('div', 'notice');
-  notice.append(node('p', null, 'P09 首批范围是正式页面壳、真实版本列表与任务下钻。风险关注、数据待处理闭环、实际时间修正和日历外时段补录仍待后续批次；本页不展示演示风险或填零结果。'));
-  const actions = node('div', 'section-actions');
-  actions.append(link('查看版本列表', '#/versions', 'button small'), link('打开功能验收', '/acceptance', 'button small'));
-  notice.append(actions);
-  wrap.append(node('div', null, ''), notice);
+  const dueCard = section('即将到期工单', failed ? '总数未知' : dueSoon.length + ' 张工单');
+  const timeline = node('div', 'due-timeline');
+  const groups = new Map();
+  for (const item of dueSoon.sort((a, b) => String(a.plannedDueAt).localeCompare(String(b.plannedDueAt)))) {
+    const key = item.due.deadlineDate || item.plannedDueAt;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  for (const [date, items] of groups) {
+    const days = items[0].due.workingDaysUntil;
+    const label = date === items[0].due.today ? '今天' : days === 0 ? '非工作日到期' : Number.isInteger(days) ? days + ' 个工作日后' : '三日内到期';
+    const group = node('div', 'due-group');
+    group.append(node('h3', 'due-heading', label + ' · ' + (date || '日期待核对') + ' · ' + items.length + ' 张'));
+    for (const item of items) {
+      const card = link('', taskHash(item.version.id, 0, item.sourceTaskId), 'due-item');
+      card.append(node('strong', null, item.title), node('span', 'cell-note',
+        (item.requirementTitle || '所属需求待核对') + ' · ' + (item.executorName || '执行者身份待核对')),
+        node('span', 'cell-note', item.version.displayName + ' · ' + (item.rawStatus || '状态未知') + ' · 截止 ' + formatDate(item.plannedDueAt)));
+      group.append(card);
+    }
+    timeline.append(group);
+  }
+  if (!dueSoon.length) timeline.append(emptyCard(failed ? '到期信息读取不完整。' : unknownDue ? '可判断的工单中暂无三日内到期，其余工单到期未知。' : '当前范围暂无三日内到期核心专业子单。'));
+  dueCard.append(timeline);
+  const executors = section('风险工单执行人');
+  executors.append(emptyCard('风险工单尚未接入，执行人汇总待完成。'));
+  side.append(dueCard, executors);
+  grid.append(main, side);
+  wrap.append(grid);
   view.replaceChildren(wrap);
 }
 
-async function renderVersions() {
+async function renderVersions(view) {
   setTitle('版本', '按纳入时间展示；点击版本查看真实任务与计算事实');
-  const view = $('view');
+
   const contexts = await loadVersionContexts();
   updateAnomalyBadge(contexts);
 
@@ -576,10 +657,10 @@ async function renderVersions() {
   view.replaceChildren(card);
 }
 
-async function renderVersionDetail(current) {
+async function renderVersionDetail(current, view) {
   const versions = await loadVersions();
   const version = versions.find(item => item.id === current.versionId);
-  const view = $('view');
+
   if (!version) {
     setTitle('版本不存在', '该对象可能已移除，或链接不属于当前可见版本');
     view.replaceChildren(errorCard('当前可见版本中没有该对象。请返回版本列表重新选择。', () => navigate('#/versions')));
@@ -947,9 +1028,9 @@ function renderHistoryItems(container, data, kind) {
   }
 }
 
-async function renderRequirements(current) {
+async function renderRequirements(current, view) {
   setTitle('需求', '按版本查看真实核心需求与阶段计算；工单层级下钻仍从版本详情进入');
-  const view = $('view');
+
   const versions = await loadVersions();
   if (!current.versionId) {
     const card = node('div', 'card');
@@ -1049,9 +1130,9 @@ async function renderRequirements(current) {
   view.replaceChildren(wrap);
 }
 
-async function renderPeople() {
+async function renderPeople(view) {
   setTitle('人员', '业务人员与系统权限分开；人员详情和任务事实下钻待后续批次');
-  const view = $('view');
+
   const card = node('div', 'card');
   const head = node('div', 'section-head');
   const titles = node('div');
@@ -1092,11 +1173,13 @@ function updateAnomalyBadge(contexts) {
   badge.title = count + ' 张工单存在当前问题标记';
 }
 
-async function renderAnomalies() {
-  setTitle('异常与审计', '当前仅汇总版本计算返回的问题标记；完整事项、处理闭环与审计待后续批次');
-  const view = $('view');
-  const contexts = await loadVersionContexts();
-  updateAnomalyBadge(contexts);
+async function renderAnomalies(current, view) {
+  setTitle('异常与审计', '当前异常工单与处理入口 · 配置及权限审计');
+
+  const allContexts = await loadVersionContexts();
+  updateAnomalyBadge(allContexts);
+  const contexts = current.versionId ? allContexts.filter(context => context.version.id === current.versionId) : allContexts;
+  if (current.versionId && !contexts.length) { view.replaceChildren(errorCard('所选版本不存在或已退出活跃范围。')); return; }
   const failed = contexts.filter(item => item.error).length;
   const known = contexts.filter(item => item.management);
   const total = failed ? '未知' : known.reduce((sum, item) => sum + summarizeManagement(item.management).issueTasks, 0);
@@ -1131,12 +1214,50 @@ async function renderAnomalies() {
   const actions = node('div', 'section-actions');
   actions.append(link('打开功能验收', '/acceptance', 'button small'));
   notice.append(actions);
-  view.replaceChildren(metrics, card, notice);
+  const issueCard = node('section', 'card');
+  issueCard.append(node('h2', 'section-title', '异常工单明细'));
+  const issueRows = contexts.flatMap(context => (context.management?.items ?? []).filter(item => item.issues?.length).map(item => {
+    const row = node('tr');
+    const title = node('td');
+    title.append(link(item.title, taskHash(context.version.id, 0, item.sourceTaskId), 'row-link'), node('div', 'cell-note', context.version.displayName));
+    const actions = node('td');
+    actions.append(link('查看工单', taskHash(context.version.id, 0, item.sourceTaskId), 'row-link'));
+    if (item.issues.some(issue => issue.includes('映射'))) actions.append(node('span', null, ' · '), link('核对状态语义', '#/config?section=status', 'row-link'));
+    row.append(title, node('td', 'wrap', item.issues.join('；')), actions);
+    return row;
+  }));
+  issueCard.append(buildTable('当前异常工单', ['工单 / 版本', '问题与影响', '处理入口'], issueRows, failed ? '当前读取不完整，不能判断为无异常。' : '当前计算事实没有问题标记。'));
+  const audit = node('section', 'card');
+  audit.append(node('h2', 'section-title', '审计记录'));
+  if (['admin', 'owner'].includes(state.actor.role)) {
+    const records = node('div');
+    const load = async () => {
+      records.replaceChildren(loading('正在读取最近 100 条系统审计记录…'));
+      try {
+        const events = await api('/api/audit');
+        const rows = events.map(event => {
+          const row = node('tr');
+          const changes = node('td');
+          const details = node('details');
+          details.append(node('summary', null, '查看前后值'));
+          details.append(node('pre', 'audit-values', JSON.stringify({ before: event.before_value, after: event.after_value }, null, 2)));
+          changes.append(details);
+          row.append(node('td', null, formatDate(event.occurred_at)), node('td', null, event.action), node('td', 'wrap', event.reason || '未记录原因'), changes);
+          return row;
+        });
+        records.replaceChildren(buildTable('最近系统审计', ['时间', '操作', '原因', '前后值'], rows, '暂无审计记录。'));
+      } catch (error) { records.replaceChildren(errorCard(error.message, load)); }
+    };
+    audit.append(node('p', 'note', '最近 100 条系统记录，跨版本展示。完整审计历史仍保存在数据库中；本页不提供删除。'), button('刷新审计', load, 'button small'), records);
+    void load();
+  } else audit.append(node('p', 'note', '审计记录仅系统管理员及所有者可查看。'));
+  notice.replaceChildren(node('p', null, '异常依据当前来源事实与映射重新计算。请在对应配置或来源中修正，恢复后保留审计；本页不提供绕过校验的手动清除。反馈校验和投递失败尚未合并为统一事项。'));
+  view.replaceChildren(metrics, card, issueCard, audit, notice);
 }
 
-function placeholderPage(title, sub, heading, paragraphs, bullets, actions) {
+function placeholderPage(view, title, sub, heading, paragraphs, bullets, actions) {
   setTitle(title, sub);
-  const view = $('view');
+
   const box = node('div', 'placeholder');
   box.append(node('h2', null, heading));
   for (const text of paragraphs) box.append(node('p', null, text));
@@ -1151,8 +1272,9 @@ function placeholderPage(title, sub, heading, paragraphs, bullets, actions) {
   view.replaceChildren(box);
 }
 
-function renderParticipation() {
+function renderParticipation(view) {
   placeholderPage(
+    view,
     '人力参与度',
     'P11 正式人力参与度后端尚未接入；不展示演示图表或虚构统计',
     '人力参与度待后续批次接入',
@@ -1162,19 +1284,85 @@ function renderParticipation() {
   );
 }
 
-function renderConfig() {
-  placeholderPage(
-    '配置库',
-    '正式配置页将在后续批次整合；现有规则、状态、日历、反馈与权限验收入口保留',
-    '配置库页面待后续批次接入',
-    ['当前 P09 首批不重写配置功能，也不复制原型中的内存演示状态。已实现的配置预览、保存、恢复验证和审计继续从功能验收使用。'],
-    ['规则与状态映射沿用现有服务端权限和恢复验证。', '版本、人员、通知和日历配置不从演示数据生成结论。', '后续正式配置页会按总原型 v2 分组导航接入。'],
-    [['打开功能验收', '/acceptance', true], ['查看版本', '#/versions', false]]
-  );
+async function renderConfig(view, current) {
+  setTitle('配置库', '版本与规则 · 状态语义 · 人员与通知');
+  const layout = node('div', 'config-layout');
+  const tabs = node('nav', 'config-tabs');
+  tabs.setAttribute('aria-label', '配置分类');
+  const content = node('div', 'config-content');
+  const response = await fetch('/acceptance');
+  if (!response.ok) throw new Error('配置表单读取失败，请重试。');
+  // shortcut: reuse the shipped acceptance form; extract a shared template when its structure diverges.
+  const document = new DOMParser().parseFromString(await response.text(), 'text/html');
+  const forms = document.querySelector('#management-rules');
+  if (!forms) throw new Error('配置表单不完整，请联系管理员。');
+  forms.hidden = false;
+  forms.className = 'card config-forms';
+  forms.querySelector('h2').textContent = '版本与规则';
+  forms.querySelector('h2 + p').textContent = '配置按系统、版本和需求逐层继承。保存前预览影响；状态映射保存后须验证恢复。';
+  forms.querySelector('#mg-results').hidden = true;
+  const detailForms = [...forms.querySelectorAll(':scope > details')];
+  const people = node('section', 'card');
+  people.hidden = true;
+  people.append(node('h2', 'section-title', '人员与权限'),
+    node('p', 'note', '业务角色与系统权限分别维护。仅所有者可调整系统权限；身份登记和停用仍从功能验收操作。'));
+  const roles = node('div');
+  people.append(roles, link('身份与权限维护', '/acceptance', 'button small'));
+  let peopleLoaded = false;
+  async function showPeople() {
+    if (peopleLoaded) return;
+    roles.replaceChildren(loading());
+    try {
+      if (state.actor.role !== 'owner') {
+        roles.replaceChildren(node('p', null, '当前身份：' + state.actor.displayName + ' · ' + (ROLE_NAMES[state.actor.role] ?? '权限未知')),
+          node('p', 'note', '完整系统权限清单仅对所有者开放。'));
+      } else {
+        const records = await api('/api/access');
+        const rows = records.map(person => {
+          const row = node('tr');
+          row.append(node('td', null, person.displayName), node('td', null, ROLE_NAMES[person.role] ?? '未知'),
+            node('td', null, person.active && person.mappingEnabled && person.confirmed ? '身份有效' : '停用或未确认'));
+          return row;
+        });
+        roles.replaceChildren(buildTable('人员与权限', ['人员', '系统权限', '身份状态'], rows, '暂无可读取人员。'));
+      }
+      peopleLoaded = true;
+    } catch (error) { roles.replaceChildren(errorCard(error.message, showPeople)); }
+  }
+  const rulesNotice = node('div', 'notice');
+  rulesNotice.append(node('p', null, '通知对象依据已确认身份、版本负责人和有效执行者确定。权限角色不自动推定业务角色，修改本页配置不会直接发送消息。'));
+  people.append(rulesNotice);
+  function selectTab(name) {
+    people.hidden = name !== 'people';
+    forms.hidden = name === 'people';
+    forms.querySelector('h2').textContent = name === 'status' ? '状态语义' : '版本与规则';
+    for (const details of detailForms) {
+      const status = Boolean(details.querySelector('#mg-mapping-form'));
+      details.hidden = name === 'status' ? !status : status;
+      if (status && name === 'status') details.open = true;
+    }
+    for (const item of tabs.children) {
+      const active = item.dataset.tab === name;
+      item.classList.toggle('active', active);
+      if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
+    }
+    if (name === 'people') void showPeople();
+  }
+  for (const [name, label] of [['rules', '版本与规则'], ['status', '状态语义'], ['people', '人员与通知']]) {
+    const item = button(label, () => selectTab(name), 'nav');
+    item.dataset.tab = name;
+    tabs.append(item);
+  }
+  content.append(forms, people);
+  layout.append(tabs, content);
+  view.append(layout);
+  await setupManagement(state.actor, (path, method = 'GET', body) => api(path, { method, body }), forms);
+  selectTab(new URLSearchParams(current.raw.split('?')[1] ?? '').get('section') === 'status' ? 'status' : 'rules');
 }
 
-function renderHistory() {
+function renderHistory(view) {
   placeholderPage(
+    view,
     '历史查询',
     'P10 生命周期与留档后端尚未接入；当前可查看版本任务的来源历史',
     '历史查询待后续批次接入',
@@ -1227,7 +1415,11 @@ async function boot() {
       location.href = '/';
     });
     $('version-select').addEventListener('change', event => {
-      if (event.target.value) navigate(versionHash(event.target.value));
+      const current = parseHash(location.hash);
+      if (current.name === 'action') navigate(actionHash(event.target.value, selectedFunctions(current.raw), current.tab));
+      else if (current.name === 'requirements') navigate(requirementsHash(event.target.value));
+      else if (current.name === 'anomalies') navigate('#/anomalies' + (event.target.value ? '?version=' + encodeURIComponent(event.target.value) : ''));
+      else if (event.target.value) navigate(versionHash(event.target.value));
       else navigate('#/versions');
     });
     window.addEventListener('hashchange', route);

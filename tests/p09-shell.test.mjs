@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { parseHash, summarizeManagement } from '../app/public/shell.js';
+import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts } from '../app/public/shell.js';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 
@@ -66,4 +66,44 @@ test('formal shell reads real versions, management facts, tasks and history', as
   assert.match(script, /登录已过期/);
   assert.match(script, /读取失败/);
   assert.match(script, /不把缺失数据填成正常/);
+});
+
+test('action filters isolate versions, professional tasks and multiple functions without mutating facts', () => {
+  const contexts = [
+    { version: { id: 'v1' }, management: { items: [
+      { id: 'root', kind: 'requirement', issues: ['状态未映射'] },
+      { id: 'ui', kind: 'professional', functionName: 'UI界面' },
+      { id: 'icon', kind: 'professional', functionName: 'UI图标' },
+      { id: 'server', kind: 'professional', functionName: '服务端' },
+      { id: 'other', kind: 'auxiliary', functionName: 'UI界面' }
+    ] } },
+    { version: { id: 'v2' }, management: { items: [{ id: 'other-version', kind: 'professional', functionName: 'UI界面' }] } }
+  ];
+  assert.deepEqual(scopeActionContexts(contexts, 'v1', ['UI界面', 'UI图标'])[0].management.items.map(item => item.id), ['ui', 'icon']);
+  assert.equal(scopeActionContexts(contexts, 'v1', ['UI界面'], true)[0].management.items.length, 5);
+  assert.equal(scopeActionContexts(contexts, null)[0].management.items.length, 3);
+  assert.equal(scopeActionContexts(contexts, 'missing').length, 0);
+  assert.equal(contexts[0].management.items.length, 5);
+  const failed = scopeActionContexts([{ version: { id: 'v1' }, management: null, error: new Error('offline') }], 'v1');
+  assert.equal(failed[0].error.message, 'offline');
+  assert.equal(failed[0].management, null);
+});
+
+test('version changes and tab switches keep URL function scope recoverable after refresh', () => {
+  const hash = actionHash('v2', ['UI界面', 'UI图标'], 'data');
+  assert.equal(parseHash(hash).versionId, 'v2');
+  assert.equal(parseHash(hash).tab, 'data');
+  assert.deepEqual(selectedFunctions(hash), ['UI界面', 'UI图标']);
+  assert.equal(actionHash(), '#/action');
+  assert.deepEqual(selectedFunctions('#/action?function=UI界面&function=UI界面'), ['UI界面']);
+});
+
+test('browser and server use one confirmed function catalog', async () => {
+  const server = await import('../app/function-catalog.mjs');
+  const script = await read('app/public/shell.js');
+  assert.ok(script.includes("from '../function-catalog.mjs'"));
+  assert.ok(server.functions.includes('UI界面'));
+  assert.ok(server.functions.includes('UI图标'));
+  const index = await read('app/public/index.html');
+  assert.equal((index.match(/class="nav-icon"/g) ?? []).length, 8);
 });

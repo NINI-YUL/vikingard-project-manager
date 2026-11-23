@@ -24,6 +24,14 @@ test('P05 PostgreSQL config preview/save, inheritance, role checks, mapping reco
   const sourceStale=await changeManagement(pool,owner,rule);await syncVersion(pool,version.id,source,{actorId:owner.id,reason:'来源更新'});await assert.rejects(changeManagement(pool,owner,{...rule,confirmed:true,expectedRevision:sourceStale.revision,previewToken:sourceStale.previewToken},true),{status:409});
   await save({kind:'mapping',projectId:projectDb,values:[{statusId:'pending',semantic:'not_started',markers:[]},{statusId:'done',semantic:'delivered',markers:['development_end']}],reason:'确认映射'});
   assert.equal((await verifyMappings(pool,owner,{projectId:projectDb,reason:'尚未同步'})).verified,false);await syncVersion(pool,version.id,source,{actorId:owner.id,reason:'映射后重读'});assert.equal((await verifyMappings(pool,owner,{projectId:projectDb,reason:'重读后验证'})).verified,true);
+  await pool.query("INSERT INTO executor_identity_mappings(source_project_id,executor_source_id,person_id,confirmed_by) VALUES($1,'source-person',$2,$2)",[projectDb,owner.id]);
+  await pool.query("UPDATE work_items SET source_status_id='pending',planned_due_at='2026-11-26T10:00:00+08:00' WHERE source_task_id=$1",[taskId]);
+  const boundary=await managementResults(pool,version.id,new Date('2026-11-23T10:00:00+08:00'));
+  const professional=boundary.items.find(item=>item.sourceTaskId===taskId);
+  assert.equal(professional.due.dueSoon,true);assert.equal(professional.due.workingDaysUntil,3);assert.equal(professional.requirementTitle,'核心需求');assert.equal(professional.executorName,'owner');
+  await pool.query("UPDATE executor_identity_mappings SET enabled=false WHERE executor_source_id='source-person'");
+  assert.equal((await managementResults(pool,version.id)).items.find(item=>item.sourceTaskId===taskId).executorName,null);
+  await pool.query("UPDATE work_items SET source_status_id='done',planned_due_at=$1 WHERE source_task_id=$2",[due,taskId]);
   result=await managementResults(pool,version.id);assert.equal(result.requirements[0].stages.foundation.complete,true);assert.equal(result.requirements[0].stages.detail.complete,false);assert.equal(result.items.find(i=>i.key===null&&i.title==='UI界面').timing.development.workingDays,null);
   await assert.rejects(save({kind:'exemption',requirementId:root,functionName:'后台',notApplicable:true,reason:'无此范围'},admin),{status:403});await save({kind:'exemption',requirementId:root,functionName:'后台',notApplicable:true,reason:'负责人确认无此范围'});assert.equal((await managementResults(pool,version.id)).requirements[0].stages.detail.complete,true);
   await assert.rejects(save({kind:'exemption',requirementId:root,functionName:'UI界面',notApplicable:true,reason:'禁止忽略已有工单'}),{status:400});
