@@ -25,7 +25,12 @@ export async function setupFeedback(actor,api) {
     let saved=false;
     try{await action();saved=true;say(success);await load(0);}catch(error){say(saved?success+' 列表刷新失败，请刷新核对结果；无需重复提交。':'操作未完成：'+error.message+'。如请求中断，请先刷新核对结果。');}finally{button.disabled=false;}
   }
-  $('fb-refresh').onclick=()=>load(0).then(()=>say('已按当前任务、身份和状态重新校验。')).catch(e=>say(e.message));
+  $('fb-refresh').onclick=async()=>{
+    const refresh=$('fb-refresh');refresh.disabled=true;say('正在刷新反馈并按当前任务、身份和状态重新校验，请等待结果。');
+    try{await load(0);say('刷新完成：已按本机当前任务、身份和状态重新校验。需读取 AI 表格修改时，请使用“读取反馈并核对当前 TB 事实”。');}
+    catch(error){say('刷新未完成：'+error.message);}
+    finally{refresh.disabled=false;}
+  };
   $('fb-version').onchange=()=>load(0).catch(e=>say(e.message));$('fb-prev').onclick=()=>load(Math.max(0,offset-100)).catch(e=>say(e.message));$('fb-next').onclick=()=>{if(next!=null)load(next).catch(e=>say(e.message));};
   $('fb-source-form').onsubmit=event=>{event.preventDefault();void perform(event.target,()=>api('/api/feedback/configure','POST',{kind:'source',projectId:data.projectId,baseId:$('fb-base').value.trim(),sheetId:$('fb-sheet').value.trim(),enabled:$('fb-source-enabled').checked,confirmed:$('fb-source-confirm').checked,reason:$('fb-source-reason').value}),'来源已保存；反馈仍须按当前任务、跟踪区间和可信身份重新校验。');};
   $('fb-executor-form').onsubmit=event=>{event.preventDefault();void perform(event.target,()=>api('/api/feedback/configure','POST',{kind:'executor',projectId:data.projectId,executorId:$('fb-executor').value,personId:$('fb-person').value,enabled:$('fb-mapping-enabled').checked,confirmed:$('fb-mapping-confirm').checked,reason:$('fb-mapping-reason').value}),'执行者映射已保存，当前反馈已重新校验。');};

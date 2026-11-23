@@ -17,3 +17,16 @@ test('review selector uses current server candidates despite approved history an
  assert.equal(get('fb-review').children.length,1);
  assert.equal(get('fb-review').children[0].textContent,'当前没有待复核记录');
 });
+
+test('feedback refresh gives immediate progress and restores button on success or failure',async()=>{
+ const nodes=new Map(),make=()=>({children:[],value:'version',textContent:'',append(child){this.children.push(child);},replaceChildren(){this.children=[];}});
+ const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
+ let finish,fail=false,delayed=false;
+ const api=async path=>{if(path==='/api/versions')return [{id:'version',displayName:'唯一受控版本'}];if(delayed)await new Promise(resolve=>{finish=resolve;});if(fail)throw new Error('503：服务暂不可用');return {items:[],validations:[],history:[],total:14,validationTotal:43,historyTotal:10,nextOffset:null};};
+ await runInNewContext(script+";setupFeedback({role:'viewer'},api)",{document:{getElementById:get,createElement:make},api,Intl,Date});
+ delayed=true;const pending=get('fb-refresh').onclick();
+ assert.equal(get('fb-refresh').disabled,true);assert.match(get('fb-message').textContent,/正在刷新/);
+ finish();await pending;assert.equal(get('fb-refresh').disabled,false);assert.match(get('fb-message').textContent,/刷新完成/);
+ fail=true;const failed=get('fb-refresh').onclick();finish();await failed;
+ assert.equal(get('fb-refresh').disabled,false);assert.match(get('fb-message').textContent,/刷新未完成.*503/);
+});

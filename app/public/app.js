@@ -5,6 +5,7 @@ function message(text) { $('message').textContent=text; }
 async function api(path,method='GET',value) {
   const response=await fetch(path,{method,headers:{...(method!=='GET'?{'Content-Type':'application/json','x-csrf-token':actor?.csrf ?? ''}:{})},...(value?{body:JSON.stringify(value)}:{})});
   const data=await response.json();
+  if(response.status===401){$('login').hidden=false;throw new Error('401：登录已过期，请点击钉钉登录后重试。');}
   if(!response.ok) throw new Error(`${response.status}：${data.error ?? '请求失败'}`);
   return data;
 }
@@ -88,7 +89,13 @@ async function versions(){
     $('versions').append(row);
   }
 }
-$('refresh-versions').onclick=async()=>{try{await versions();if(selectedVersion)await tasks(selectedVersion,taskOffset);}catch(error){message(error.message);}};
+$('refresh-versions').onclick=async()=>{
+  const refresh=$('refresh-versions'),status=$('versions-feedback');
+  refresh.disabled=true;status.textContent='正在刷新本机版本列表，请等待结果。';
+  try{await versions();if(selectedVersion)await tasks(selectedVersion,taskOffset);status.textContent='刷新完成：已读取本机版本列表'+(selectedVersion?'及当前任务快照':'')+'。数据未变化时内容保持不变；更新 TB 事实请点击“读取来源并同步”。';}
+  catch(error){status.textContent='刷新未完成：'+error.message;message(status.textContent);}
+  finally{refresh.disabled=false;}
+};
 $('tasks-prev').onclick=()=>tasks(selectedVersion,Math.max(0,taskOffset-100)).catch(error=>message(error.message));
 $('tasks-next').onclick=()=>{if(nextTaskOffset!==null)tasks(selectedVersion,nextTaskOffset).catch(error=>message(error.message));};
 $('enroll-version').onsubmit=async event=>{
