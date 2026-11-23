@@ -40,3 +40,21 @@ test('refresh failure preserves saved confirmation and prevents misleading retry
   await ui.confirm();assert.equal(writes,1);assert.equal(ui.submit.disabled,false);
   assert.match(ui.get('enroll-feedback').textContent,/确认成功/);assert.match(ui.get('enroll-feedback').textContent,/无需重复确认/);
 });
+
+test('version refresh shows nearby progress, prevents repeated clicks and confirms unchanged data',async()=>{
+  let finish,reads=0;
+  const ui=await page(async(path,options,response)=>{reads++;await new Promise(resolve=>{finish=resolve;});return response([]);});
+  const pending=ui.get('refresh-versions').onclick();
+  assert.equal(ui.get('refresh-versions').disabled,true);
+  assert.match(ui.get('versions-feedback').textContent,/正在刷新/);
+  finish();await pending;
+  assert.equal(reads,1);assert.equal(ui.get('refresh-versions').disabled,false);
+  assert.match(ui.get('versions-feedback').textContent,/刷新完成/);
+});
+test('version refresh failure stays near button and expired login offers sign in',async()=>{
+  const ui=await page(async(path,options,response)=>response({error:'原始拒绝'},false,401));
+  await ui.get('refresh-versions').onclick();
+  assert.equal(ui.get('refresh-versions').disabled,false);
+  assert.match(ui.get('versions-feedback').textContent,/刷新未完成.*登录已过期/);
+  assert.equal(ui.get('login').hidden,false);
+});

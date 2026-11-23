@@ -27,14 +27,11 @@ export function validateFeedback(records, { task, project, mapping }) {
     const raw = numeric ? Number(value) : NaN, percent = Math.round(raw * 100);
     if (!Number.isFinite(raw) || raw < 0 || raw > 1 || Math.abs(raw * 100 - percent) > 1e-8) reasons.push('进度必须能换算为 0–100 的整数百分比');
     const situation = f['当前情况']?.name;
-    if (!['进度正常', '存在风险', '已阻塞'].includes(situation)) {
-      if (situation === '已暂停') reviews.push('已暂停与已阻塞的对应含义未确认');
-      else reasons.push('当前情况缺失或不支持');
-    }
-    const risk = f['风险原因与所需协助']?.markdown;
-    if (['存在风险', '已阻塞'].includes(situation)) {
-      if (typeof risk !== 'string' || !risk.trim()) reasons.push('风险或阻塞说明必填');
-      else reviews.push('风险原因、影响及所需协助是否充分，需人工复核');
+    if (!['进度正常', '存在风险'].includes(situation)) reasons.push('当前情况缺失或不支持');
+    const riskFields = ['风险原因', '预估延期时间', '所需协助'];
+    if (situation === '存在风险') {
+      if (riskFields.some(name => typeof f[name] !== 'string' || !f[name].trim())) reviews.push('风险原因、预估延期时间和所需协助未完整填写，需人工复核');
+      else reviews.push('风险原因、预估延期时间和所需协助需人工复核');
     }
     return {
       recordId: r.id, submittedAt: Number.isSafeInteger(r.createdTime) ? r.createdTime : null,
