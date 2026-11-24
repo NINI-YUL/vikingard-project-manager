@@ -16,8 +16,11 @@ const versions = versionIds.map((id, index) => ({
 // Fixtures are local: this check never reads a real login session or sends external writes.
 function fact(id, kind, functionName, due) {
   return {
-    id, sourceTaskId: id, title: id, kind, functionName, rawStatus: '开发中', semantic: 'developing', issues: [], due, timing: { development: {}, test: {} },
+    id, sourceTaskId: id, parentSourceTaskId: kind === 'requirement' ? null : 'root', title: id,
+    typeName: kind === 'requirement' ? '需求' : kind === 'professional' ? '子需求' : '辅助子单',
+    kind, functionName, rawStatus: '开发中', semantic: 'developing', issues: [], due, timing: { development: {}, test: {} },
     requirementTitle: '测试核心需求', executorName: '测试执行者',
+    plannedStartAt: '2026-11-20T10:00:00+08:00', planWorkingDays: due?.overdue ? 1 : 5,
     plannedDueAt: due?.overdue ? '2026-11-20T10:00:00+08:00' : '2026-11-26T10:00:00+08:00'
   };
 }
@@ -29,16 +32,24 @@ const facts = [
 ];
 facts[0].issues = ['结构待核对'];
 function management(index) {
+  const requirement = {
+    id: 'root', title: '测试核心需求',
+    stages: {
+      foundation: { calculable: true, complete: false, missingFunctions: ['客户端'] },
+      detail: { calculable: true, complete: false, missingFunctions: ['UI图标'] },
+      test: { calculable: false, complete: false, missingFunctions: [] }
+    }
+  };
   return {
     versionId: versionIds[index],
     items: index ? [fact('server', 'professional', '服务端', { overdue: true, workingDays: 2 })] : facts,
-    requirements: [],
+    requirements: index ? [] : [requirement],
     progress: {
       coreRequirementCount: 1, foundation: { total: 1, completed: 0, percent: 0 },
       detail: { total: 1, completed: 0, percent: 0 }, test: { total: 1, completed: 0, percent: 0 },
       optimization: { total: 0, stateComplete: 0 }
     },
-    optimizations: [], concurrency: { threshold: 3, attention: [], excluded: 0 }, sourceSnapshotAt: '2026-11-23T02:00:00Z', revision: 1
+    optimizations: [], concurrency: { threshold: 3, attention: [], excluded: 0 }, sourceSnapshotAt: '2026-11-23T02:00:00Z', calculatedAt: '2026-11-23T02:05:00Z', revision: 1
   };
 }
 const tasks = Array.from({ length: 101 }, (_, index) => ({
@@ -115,8 +126,13 @@ let server, browser;
     assert.equal(await metric(3).innerText(), '0');
 
     await page.getByRole('link', { name: '版本', exact: true }).click();
-    await page.getByRole('region', { name: '版本列表' }).waitFor();
-    await page.getByRole('link', { name: '打开版本' }).first().click();
+    await page.locator('.version-workspace').waitFor();
+    assert.equal(await page.locator('.version-rail-item').count(), 2);
+    assert.equal(await page.locator('.version-rail-item.active').innerText(), '浏览器测试版本 1\n1 个核心需求');
+    assert.match(await page.locator('.version-detail-pane').innerText(), /风险需求\s*待接入/);
+    assert.match(await page.locator('.version-detail-pane').innerText(), /当前管理信号/);
+    assert.match(await page.locator('.version-detail-pane').innerText(), /最近变化/);
+    await page.screenshot({ path: path.join(output, 'p09-version-desktop.png'), fullPage: true });
     await page.getByRole('region', { name: '任务快照', exact: true }).waitFor();
     await page.getByRole('button', { name: '下一页', exact: true }).click();
     await page.waitForFunction(() => location.hash.includes('offset=100') && document.querySelector('.count-line')?.textContent.includes('本页 1 张'));
@@ -127,10 +143,26 @@ let server, browser;
     await page.locator('.task-panel').waitFor();
     assert.equal(await page.locator('.panel-title').innerText(), '测试任务 100');
     assert.match(page.url(), /offset=100&task=task-100/);
+    await page.getByRole('link', { name: '需求', exact: true }).click();
+    await page.locator('.requirement-overview').waitFor();
+    assert.match(await page.locator('.requirement-overview').innerText(), /测试核心需求/);
+    assert.equal(await page.locator('.requirement-timeline-row').count(), 2);
+    assert.equal(await page.locator('.requirement-work-card').count(), 1);
+    await page.screenshot({ path: path.join(output, 'p09-requirement-desktop.png'), fullPage: true });
 
     await page.goto(origin + '/#/action');
     await page.locator('.action-grid').waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(origin + '/#/versions/' + versionIds[0]);
+    await page.locator('.version-workspace').waitFor();
+    await page.screenshot({ path: path.join(output, 'p09-version-mobile.png'), fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.goto(origin + '/#/requirements?version=' + versionIds[0] + '&requirement=root');
+    await page.locator('.requirement-overview').waitFor();
+    await page.screenshot({ path: path.join(output, 'p09-requirement-mobile.png'), fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.goto(origin + '/#/action');
+    await page.locator('.action-grid').waitFor();
     await page.screenshot({ path: path.join(output, 'p09-aligned-mobile.png'), fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
 
@@ -247,7 +279,7 @@ let server, browser;
     assert.match(await page.locator('#view').innerText(), /隔离验证/);
     await page.screenshot({ path: path.join(output, 'p09-audit.png'), fullPage: true });
     assert.deepEqual(errors, []);
-    console.log('PASS P09 browser: desktop/mobile, version and function scopes, data tab, pagination, task deep link, delayed navigation, failures, expired session, viewer restrictions, owner config preview/save and audit.');
+    console.log('PASS P09 browser: desktop/mobile version and requirement workspaces, function scopes, data tab, pagination, task deep link, delayed navigation, failures, expired session, viewer restrictions, owner config preview/save and audit.');
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

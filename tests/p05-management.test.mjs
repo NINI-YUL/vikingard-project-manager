@@ -28,7 +28,7 @@ test('P05 PostgreSQL config preview/save, inheritance, role checks, mapping reco
   await pool.query("UPDATE work_items SET source_status_id='pending',planned_due_at='2026-11-26T10:00:00+08:00' WHERE source_task_id=$1",[taskId]);
   const boundary=await managementResults(pool,version.id,new Date('2026-11-23T10:00:00+08:00'));
   const professional=boundary.items.find(item=>item.sourceTaskId===taskId);
-  assert.equal(professional.due.dueSoon,true);assert.equal(professional.due.workingDaysUntil,3);assert.equal(professional.requirementTitle,'核心需求');assert.equal(professional.executorName,'owner');
+  assert.equal(professional.due.dueSoon,true);assert.equal(professional.due.workingDaysUntil,3);assert.equal(professional.requirementTitle,'核心需求');assert.equal(professional.executorName,'owner');assert.equal(professional.parentSourceTaskId,rootId);assert.equal(professional.typeName,'子需求');assert.equal(new Date(professional.plannedStartAt).toISOString(),'2026-11-16T02:00:00.000Z');
   await pool.query("UPDATE executor_identity_mappings SET enabled=false WHERE executor_source_id='source-person'");
   assert.equal((await managementResults(pool,version.id)).items.find(item=>item.sourceTaskId===taskId).executorName,null);
   await pool.query("UPDATE work_items SET source_status_id='done',planned_due_at=$1 WHERE source_task_id=$2",[due,taskId]);

@@ -26,6 +26,7 @@ const state = {
   tasks: new Map(),
   filters: new Map(),
   actionTab: 'delivery',
+  versionRailCollapsed: false,
   routeRevision: 0
 };
 
@@ -100,6 +101,19 @@ function formatDate(value) {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(date);
+}
+
+function formatDay(value) {
+  if (!value) return '日期未配置';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '日期未知';
+  return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+function dayValue(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
 }
 
 function formatSync(version) {
@@ -653,57 +667,15 @@ async function renderAction(current, view) {
 }
 
 async function renderVersions(view) {
-  setTitle('版本', '按纳入时间展示；点击版本查看真实任务与计算事实');
-
-  const contexts = await loadVersionContexts();
-  updateAnomalyBadge(contexts);
-
-  const card = node('div', 'card');
-  const head = node('div', 'section-head');
-  const titles = node('div');
-  titles.append(node('div', 'section-title', '全部活跃版本'), node('div', 'note', '版本结束、终止和历史留档仍在后续批次接入'));
-  const actions = node('div', 'section-actions');
-  actions.append(node('span', 'pill blue', contexts.length + ' 个版本'));
-  actions.append(button('刷新列表', async () => {
-    state.versions = null;
-    state.management.clear();
-    state.tasks.clear();
-    await route();
-  }));
-  head.append(titles, actions);
-  card.append(head);
-
-  const rows = contexts.map(context => {
-    const row = node('tr');
-    const versionCell = node('td');
-    versionCell.append(link(context.version.displayName, versionHash(context.version.id), 'version-name'), node('div', 'cell-note', context.version.projectName ?? ''));
-    row.append(versionCell, node('td', null, ownerText(context.version)), node('td', null, formatDate(context.version.syncStartAt)), statusCell(context.version));
-    if (context.error) {
-      row.append(node('td', null, '读取失败'), node('td', null, '未知'), node('td', null, '未知'), node('td', null, '未知'));
-    } else {
-      const progress = context.management.progress;
-      const counts = summarizeManagement(context.management);
-      const foundation = stageSummary(progress, 'foundation');
-      const opt = optimizationSummary(progress);
-      const foundationCell = node('td');
-      foundationCell.append(node('div', null, foundation.text), node('div', 'cell-note', foundation.detail));
-      const optCell = node('td');
-      optCell.append(node('div', null, opt.text), node('div', 'cell-note', opt.detail));
-      row.append(
-        node('td', null, progress.coreRequirementCount + ' 个'),
-        foundationCell,
-        optCell,
-        node('td', null, counts.issueTasks + ' 张')
-      );
-    }
-    const action = node('td');
-    action.append(link('打开版本', versionHash(context.version.id), 'row-link'));
-    row.append(action);
-    return row;
-  });
-
-  card.append(buildTable('版本列表', ['版本', '负责人', '同步起点', '来源同步', '核心需求', '基础流程', '优化需求', '数据异常', '操作'], rows, '尚未纳入受控版本。管理员可从功能验收纳入版本。'));
-  view.replaceChildren(card);
+  setTitle('版本', '活跃版本列表与版本详情');
+  const versions = await loadVersions();
+  if (versions.length) {
+    const current = parseHash(versionHash(versions[0].id));
+    history.replaceState(null, '', versionHash(versions[0].id));
+    syncVersionSelect(current);
+    return renderVersionDetail(current, view);
+  }
+  view.replaceChildren(emptyCard('暂无活跃版本。管理员可从功能验收纳入受控版本。'));
 }
 
 async function renderVersionDetail(current, view) {
@@ -712,69 +684,78 @@ async function renderVersionDetail(current, view) {
 
   if (!version) {
     setTitle('版本不存在', '该对象可能已移除，或链接不属于当前可见版本');
-    view.replaceChildren(errorCard('当前可见版本中没有该对象。请返回版本列表重新选择。', () => navigate('#/versions')));
+    view.replaceChildren(errorCard('当前可见版本中没有该对象。请返回活跃版本重新选择。', () => navigate('#/versions')));
     return;
   }
-  setTitle(version.displayName, (version.projectName ?? '来源项目未知') + ' · 负责人：' + ownerText(version));
+  setTitle('版本', '活跃版本列表与版本详情');
+  view.replaceChildren(loading());
 
-  const breadcrumbs = node('div', 'breadcrumbs');
-  breadcrumbs.append(link('版本', '#/versions'), node('span', null, '/'), node('b', null, version.displayName));
-  view.replaceChildren(breadcrumbs, loading());
-
-  const [managementResult, tasksResult] = await Promise.allSettled([
-    managementFor(version.id),
-    tasksFor(version.id, current.offset)
+  const [contexts, tasksResult] = await Promise.all([
+    loadVersionContexts(),
+    Promise.allSettled([tasksFor(version.id, current.offset)]).then(results => results[0])
   ]);
-  const management = managementResult.status === 'fulfilled' ? managementResult.value : null;
+  updateAnomalyBadge(contexts);
+  const context = contexts.find(item => item.version.id === version.id);
+  const management = context?.management ?? null;
   const tasks = tasksResult.status === 'fulfilled' ? tasksResult.value : null;
   const wrap = node('div');
-  wrap.append(breadcrumbs);
+  const workspace = node('div', 'version-workspace' + (state.versionRailCollapsed ? ' rail-collapsed' : ''));
+  const rail = node('aside', 'version-rail');
+  rail.setAttribute('aria-label', '活跃版本');
+  const railHead = node('div', 'version-rail-head');
+  const railTitle = node('div', 'version-rail-title');
+  railTitle.append(node('span', null, '活跃版本'), node('span', 'pill blue', contexts.length));
+  const toggle = button(state.versionRailCollapsed ? '→' : '←', () => {
+    state.versionRailCollapsed = !state.versionRailCollapsed;
+    workspace.classList.toggle('rail-collapsed', state.versionRailCollapsed);
+    toggle.textContent = state.versionRailCollapsed ? '→' : '←';
+    toggle.setAttribute('aria-label', state.versionRailCollapsed ? '展开活跃版本列表' : '收起活跃版本列表');
+  }, 'version-rail-toggle');
+  toggle.setAttribute('aria-label', state.versionRailCollapsed ? '展开活跃版本列表' : '收起活跃版本列表');
+  railHead.append(railTitle, toggle);
+  const railList = node('div', 'version-rail-list');
+  for (const item of contexts) {
+    const active = item.version.id === version.id;
+    const entry = link('', versionHash(item.version.id), 'version-rail-item' + (active ? ' active' : ''));
+    if (active) entry.setAttribute('aria-current', 'page');
+    const count = item.error ? '详情读取失败' : item.management.progress.coreRequirementCount + ' 个核心需求';
+    entry.append(node('b', null, item.version.displayName), node('span', null, count));
+    railList.append(entry);
+  }
+  rail.append(railHead, railList);
 
-  if (managementResult.status === 'rejected') {
-    wrap.append(errorCard('计算事实读取失败：' + managementResult.reason.message, async () => {
+  const detailPane = node('section', 'version-detail-pane');
+  const breadcrumbs = node('div', 'breadcrumbs');
+  breadcrumbs.append(link('全部活跃版本', '#/versions'), node('span', null, '/'), node('b', null, version.displayName));
+  const hero = node('div', 'version-detail-hero');
+  hero.append(node('div', 'note', '版本'), node('h1', 'version-detail-title', version.displayName), node('div', 'sub', 'Teambition 同步起点：' + formatDate(version.syncStartAt)));
+  detailPane.append(breadcrumbs, hero);
+
+  if (context?.error) {
+    detailPane.append(errorCard('计算事实读取失败：' + context.error.message, async () => {
       clearVersionCaches(version.id);
       await route();
     }));
   }
 
-  const summary = node('div', 'summary-strip');
-  const summaryItems = [
-    ['来源同步', formatSync(version).name + ' · ' + formatDate(version.lastSuccessAt) + (version.lastErrorCode ? ' · ' + version.lastErrorCode : '')],
-    ['同步起点（北京时间）', formatDate(version.syncStartAt)],
-    ['来源快照', management ? formatDate(management.sourceSnapshotAt) : '未知'],
-    ['计算版本', management ? 'revision ' + management.revision : '未知'],
-    ['负责人身份', version.ownerConfirmed ? '已确认' : '待确认；自动同步暂停']
-  ];
-  for (const [label, value] of summaryItems) {
-    const item = node('div', 'summary-item');
-    item.append(node('span', 'note', label), node('b', null, value));
-    summary.append(item);
-  }
-  wrap.append(summary);
-
   if (management) {
     const counts = summarizeManagement(management);
     const progress = management.progress;
-    const metrics = node('div', 'metrics');
+    const metrics = node('div', 'version-kpis');
     const foundation = stageSummary(progress, 'foundation');
-    const detail = stageSummary(progress, 'detail');
-    const test = stageSummary(progress, 'test');
     const opt = optimizationSummary(progress);
     metrics.append(
-      metricCard('基础流程', foundation.text, foundation.detail, 'blue'),
-      metricCard('细节完整', detail.text, detail.detail, 'blue'),
-      metricCard('测试阶段', test.text, test.detail, 'blue'),
-      metricCard('优化需求', opt.text, opt.detail, 'blue'),
-      metricCard('已逾期', counts.overdue, '按当前计划截止判断', 'red'),
-      metricCard('即将到期', counts.dueSoon, '按当前工作日历判断', 'amber'),
-      metricCard('数据异常', counts.issueTasks, '有当前问题标记的工单数', counts.issueTasks ? 'amber' : 'blue')
+      metricCard('核心需求', progress.coreRequirementCount + ' 个', '基础流程 ' + foundation.text + ' · ' + foundation.detail),
+      metricCard('优化需求', progress.optimization.total + ' 个', opt.text + ' · ' + opt.detail),
+      metricCard('风险需求', '待接入', '风险需求聚合将在 P09 后续阶段接入', 'muted')
     );
-    wrap.append(metrics);
+    detailPane.append(metrics);
 
-    const reqCard = node('div', 'card');
+    const detailLayout = node('div', 'version-detail-layout');
+    const reqCard = node('div', 'card version-requirements');
     const reqHead = node('div', 'section-head');
     const reqTitles = node('div');
-    reqTitles.append(node('div', 'section-title', '核心需求阶段'), node('div', 'note', '阶段未知保留为不可计算，不以零代替'));
+    reqTitles.append(node('div', 'section-title', '核心需求进展与风险'), node('div', 'note', '只展示核心需求；阶段未知保留为不可计算，不以零代替'));
     const reqActions = node('div', 'section-actions');
     reqActions.append(link('查看需求页', requirementsHash(version.id), 'button small'));
     reqHead.append(reqTitles, reqActions);
@@ -784,21 +765,59 @@ async function renderVersionDetail(current, view) {
       const name = node('td');
       name.append(link(requirement.title || '未命名需求', requirementsHash(version.id, requirement.id), 'version-name'), node('div', 'cell-note', '需求 ID ' + requirement.id));
       row.append(name);
-      for (const key of ['foundation', 'detail', 'test']) {
-        const stage = requirementStage(requirement.stages[key]);
-        const cell = node('td');
-        cell.append(node('span', 'pill ' + stage.cls, stage.text));
-        const missing = requirement.stages[key]?.missingFunctions ?? [];
-        if (missing.length) cell.append(node('div', 'cell-note', '缺少职能：' + missing.join('、')));
-        row.append(cell);
-      }
-      const action = node('td');
-      action.append(link('查看需求', requirementsHash(version.id, requirement.id), 'row-link'));
-      row.append(action);
+      const owner = management.items.find(item => item.id === requirement.id)?.executorName;
+      row.append(node('td', null, owner || '身份待核对'));
+      const foundationStage = requirementStage(requirement.stages.foundation);
+      const foundationCell = node('td');
+      foundationCell.append(node('span', 'pill ' + foundationStage.cls, foundationStage.text));
+      const missingFoundation = requirement.stages.foundation?.missingFunctions ?? [];
+      if (missingFoundation.length) foundationCell.append(node('div', 'cell-note', '缺少职能：' + missingFoundation.join('、')));
+      row.append(foundationCell);
+      const detailStage = requirementStage(requirement.stages.detail);
+      const testStage = requirementStage(requirement.stages.test);
+      const detailCell = node('td');
+      detailCell.append(node('span', 'pill ' + detailStage.cls, detailStage.text), node('div', 'cell-note', '测试阶段：' + testStage.text));
+      row.append(detailCell);
+      const riskCell = node('td');
+      riskCell.append(node('span', 'pill', '待接入'));
+      row.append(riskCell);
       return row;
     });
-    reqCard.append(buildTable('核心需求阶段', ['需求', '基础流程', '细节完整', '测试阶段', '操作'], reqRows, '当前版本没有可识别的核心需求。'));
-    wrap.append(reqCard);
+    reqCard.append(buildTable('核心需求进展与风险', ['核心需求', '负责人', '基础流程', '全部内容', '风险'], reqRows, '当前版本没有可识别的核心需求。'));
+
+    const side = node('aside', 'version-detail-side');
+    const signalCard = node('div', 'card');
+    signalCard.append(node('div', 'section-title', '当前管理信号'));
+    const signalList = node('div', 'version-signal-list');
+    const signals = [
+      ['已逾期', counts.overdue ? counts.overdue + ' 张工单已逾期' : '当前可判断工单中暂无逾期', counts.overdue ? 'red' : 'green'],
+      ['即将到期', counts.dueSoon ? counts.dueSoon + ' 张工单在三个工作日内到期' : '当前可判断工单中暂无三日内到期', counts.dueSoon ? 'amber' : 'green'],
+      ['数据异常', counts.issueTasks ? counts.issueTasks + ' 张工单存在 ' + counts.issueCount + ' 项数据问题' : '当前读取范围未发现数据问题', counts.issueTasks ? 'amber' : 'green']
+    ];
+    for (const [label, text, tone] of signals) {
+      const signal = node('div', 'version-signal ' + tone);
+      signal.append(node('b', null, label), node('div', 'note', text));
+      signalList.append(signal);
+    }
+    signalCard.append(signalList);
+
+    const changesCard = node('div', 'card version-changes');
+    changesCard.append(node('div', 'section-title', '最近变化'), node('div', 'note', '只记录当前可核对的同步与计算事实'));
+    const timeline = node('div', 'version-timeline');
+    const changes = [
+      [version.lastSuccessAt, '来源同步', formatSync(version).name + (version.lastErrorCode ? ' · ' + version.lastErrorCode : '')],
+      [management.sourceSnapshotAt, '来源快照', '当前管理计算使用的 Teambition 快照'],
+      [management.calculatedAt, '管理计算', 'revision ' + management.revision]
+    ];
+    for (const [at, label, text] of changes) {
+      const item = node('div', 'version-timeline-item');
+      item.append(node('span', 'note', formatDate(at)), node('b', null, label), node('div', 'note', text));
+      timeline.append(item);
+    }
+    changesCard.append(timeline);
+    side.append(signalCard, changesCard);
+    detailLayout.append(reqCard, side);
+    detailPane.append(detailLayout);
   }
 
   const taskCard = node('div', 'card');
@@ -818,7 +837,9 @@ async function renderVersionDetail(current, view) {
       state.tasks.delete(version.id + ':' + current.offset);
       await route();
     }));
-    wrap.append(taskCard);
+    detailPane.append(taskCard);
+    workspace.append(rail, detailPane);
+    wrap.append(workspace);
     view.replaceChildren(wrap);
     return;
   }
@@ -829,7 +850,9 @@ async function renderVersionDetail(current, view) {
   layout.append(taskList);
   if (current.taskId) layout.append(renderTaskPanel(version, tasks, management, current));
   taskCard.append(layout);
-  wrap.append(taskCard);
+  detailPane.append(taskCard);
+  workspace.append(rail, detailPane);
+  wrap.append(workspace);
   view.replaceChildren(wrap);
 }
 
@@ -1078,36 +1101,19 @@ function renderHistoryItems(container, data, kind) {
 }
 
 async function renderRequirements(current, view) {
-  setTitle('需求', '按版本查看真实核心需求与阶段计算；工单层级下钻仍从版本详情进入');
-
+  setTitle('核心需求详情', '核心交付时间线与其他直属工作单');
   const versions = await loadVersions();
-  if (!current.versionId) {
-    const card = node('div', 'card');
-    const head = node('div', 'section-head');
-    const titles = node('div');
-    titles.append(node('div', 'section-title', '选择版本查看需求'), node('div', 'note', '需求完成数来自当前计算事实，未知保留不可计算'));
-    head.append(titles, node('span', 'pill blue', versions.length + ' 个版本'));
-    card.append(head);
-    const rows = versions.map(version => {
-      const row = node('tr');
-      row.append(node('td', null, version.displayName), node('td', null, version.projectName ?? '未知项目'), node('td', null, ownerText(version)), statusCell(version));
-      const action = node('td');
-      action.append(link('查看需求', requirementsHash(version.id), 'row-link'), node('span', null, ' · '), link('任务', versionHash(version.id), 'row-link'));
-      row.append(action);
-      return row;
-    });
-    card.append(buildTable('需求版本选择', ['版本', '项目', '负责人', '来源同步', '操作'], rows, '尚未纳入受控版本。'));
-    view.replaceChildren(card);
+  if (!versions.length) {
+    view.replaceChildren(emptyCard('暂无活跃版本，当前没有可查看的核心需求。'));
     return;
   }
 
-  const version = versions.find(item => item.id === current.versionId);
+  const version = current.versionId ? versions.find(item => item.id === current.versionId) : versions[0];
   if (!version) {
     setTitle('版本不存在', '当前可见版本中没有该对象');
     view.replaceChildren(errorCard('当前可见版本中没有该对象。', () => navigate('#/requirements')));
     return;
   }
-  setTitle('需求 · ' + version.displayName, version.projectName ?? '来源项目未知');
   let management;
   try {
     management = await managementFor(version.id);
@@ -1115,46 +1121,129 @@ async function renderRequirements(current, view) {
     view.replaceChildren(errorCard('需求与阶段读取失败：' + error.message, () => route()));
     return;
   }
+  const requirement = current.requirementId
+    ? management.requirements.find(item => item.id === current.requirementId)
+    : management.requirements[0] ?? null;
+  if (!current.versionId || (!current.requirementId && requirement)) {
+    const hash = requirementsHash(version.id, requirement?.id);
+    history.replaceState(null, '', hash);
+    syncVersionSelect(parseHash(hash));
+  }
   const breadcrumbs = node('div', 'breadcrumbs');
-  breadcrumbs.append(link('需求', '#/requirements'), node('span', null, '/'), link(version.displayName, requirementsHash(version.id)), current.requirementId ? node('b', null, '需求详情') : node('span', null, '需求列表'));
+  breadcrumbs.append(link('行动中心', '#/action'), node('span', null, '/'), link(version.displayName, versionHash(version.id)), node('span', null, '/'), node('b', null, requirement?.title || '核心需求'));
   const wrap = node('div');
   wrap.append(breadcrumbs);
 
-  if (current.requirementId) {
-    const requirement = management.requirements.find(item => item.id === current.requirementId);
-    if (!requirement) {
-      wrap.append(errorCard('当前版本计算事实中没有该需求。', () => navigate(requirementsHash(version.id))));
-    } else {
-      const card = node('div', 'card');
-      const head = node('div', 'section-head');
-      const titles = node('div');
-      titles.append(node('div', 'section-title', requirement.title || '未命名需求'), node('div', 'note', '需求 ID ' + requirement.id));
-      const actions = node('div', 'section-actions');
-      actions.append(link('打开版本任务', versionHash(version.id), 'button small'), button('返回需求列表', () => navigate(requirementsHash(version.id))));
-      head.append(titles, actions);
-      card.append(head);
-      const grid = node('div', 'stage-grid');
-      for (const [key, label] of [['foundation', '基础流程'], ['detail', '细节完整'], ['test', '测试阶段']]) {
-        const stage = requirement.stages[key];
-        const state = requirementStage(stage);
-        const item = node('div', 'stage ' + (stage?.complete ? 'ok' : stage?.calculable === false ? 'unknown' : ''));
-        item.append(node('b', null, label), node('span', null, state.text));
-        if (stage?.missingFunctions?.length) item.append(node('div', 'cell-note', '缺少职能：' + stage.missingFunctions.join('、')));
-        if (stage?.structureUnknown) item.append(node('div', 'cell-note', '结构未知，阶段暂停判断'));
-        if (stage?.blockedTaskIds?.length) item.append(node('div', 'cell-note', '受影响任务：' + stage.blockedTaskIds.length + ' 张'));
-        grid.append(item);
-      }
-      card.append(grid);
-      wrap.append(card);
+  if (current.requirementId && !requirement) {
+    wrap.append(errorCard('当前版本计算事实中没有该需求。', () => navigate(requirementsHash(version.id))));
+  } else if (requirement) {
+    const root = management.items.find(item => item.id === requirement.id);
+    const direct = root ? management.items.filter(item => item.parentSourceTaskId === root.sourceTaskId) : [];
+    const timelineItems = direct.filter(item => item.kind === 'professional' || item.typeName?.includes('测试'));
+    const otherItems = direct.filter(item => !timelineItems.includes(item));
+    const plannedStarts = direct.map(item => dayValue(item.plannedStartAt)).filter(value => value !== null);
+    const plannedEnds = direct.map(item => dayValue(item.plannedDueAt)).filter(value => value !== null);
+    const plannedStart = plannedStarts.length ? Math.min(...plannedStarts) : null;
+    const plannedEnd = plannedEnds.length ? Math.max(...plannedEnds) : null;
+    const terminalCount = direct.filter(item => ['delivered', 'non_delivery'].includes(item.semantic)).length;
+    const issueCount = direct.filter(item => item.issues?.length).length;
+    const currentStage = !requirement.stages.foundation?.complete ? '基础流程'
+      : !requirement.stages.detail?.complete ? '全部内容制作'
+        : !requirement.stages.test?.complete ? '测试阶段' : '已完成';
+
+    const overview = node('section', 'card requirement-overview');
+    const overviewMain = node('div', 'requirement-overview-main');
+    overviewMain.append(node('div', 'note', '核心需求 · ' + (root?.key || requirement.id)), node('h1', 'requirement-title', requirement.title || '未命名需求'));
+    overviewMain.append(node('div', 'requirement-meta', '需求负责人：' + (root?.executorName || '身份待核对') + ' · 版本：' + version.displayName + ' · 预计完成：' + formatDay(plannedEnd)));
+    const tags = node('div', 'requirement-tags');
+    const foundation = requirementStage(requirement.stages.foundation);
+    tags.append(node('span', 'pill blue', '核心需求'), node('span', 'pill', direct.length + ' 张直属工作单'), node('span', 'pill', '基础流程 ' + foundation.text), node('span', 'pill', '风险待接入'));
+    overviewMain.append(tags);
+    const facts = node('div', 'requirement-overview-facts');
+    const overviewFacts = [
+      ['计划周期', plannedStart && plannedEnd ? formatDay(plannedStart) + ' → ' + formatDay(plannedEnd) : '日期未完整配置'],
+      ['终态工作单', terminalCount + ' / ' + direct.length],
+      ['当前阶段', currentStage],
+      ['数据异常', issueCount + ' 张']
+    ];
+    for (const [label, value] of overviewFacts) {
+      const fact = node('div', 'requirement-overview-fact');
+      fact.append(node('span', 'note', label), node('b', null, value));
+      facts.append(fact);
     }
+    overview.append(overviewMain, facts);
+    wrap.append(overview);
+
+    const timelineSection = node('section', 'requirement-section');
+    const timelineHead = node('div', 'section-head');
+    timelineHead.append(node('div', null));
+    timelineHead.firstChild.append(node('div', 'section-title', '工单时间线'), node('div', 'note', timelineItems.length + ' 张核心专业子单与测试工作单'));
+    timelineHead.append(link('打开版本任务', versionHash(version.id), 'button small'));
+    timelineSection.append(timelineHead);
+    const timelineCard = node('div', 'card requirement-timeline-card');
+    if (!timelineItems.length) {
+      timelineCard.append(emptyCard('当前需求没有可识别的核心专业子单或测试工作单。'));
+    } else {
+      const timeline = node('div', 'requirement-timeline');
+      const timelineInner = node('div', 'requirement-timeline-inner');
+      const axis = node('div', 'requirement-timeline-axis');
+      axis.append(node('div', null, '职能 / 工单 / 起止时间'));
+      const axisTrack = node('div', 'requirement-axis-track');
+      axisTrack.append(node('span', null, plannedStart ? formatDay(plannedStart) : '开始日期未知'), node('span', null, plannedEnd ? formatDay(plannedEnd) : '截止日期未知'));
+      axis.append(axisTrack);
+      timelineInner.append(axis);
+      const range = Math.max(86400000, (plannedEnd ?? 0) - (plannedStart ?? 0));
+      for (const item of timelineItems) {
+        const row = node('div', 'requirement-timeline-row');
+        const label = node('div', 'requirement-timeline-label');
+        label.append(node('b', null, (item.functionName || item.typeName || '职能待核对') + ' · ' + item.title), node('span', null, formatDay(item.plannedStartAt) + ' → ' + formatDay(item.plannedDueAt) + (item.planWorkingDays === null || item.planWorkingDays === undefined ? '' : ' · ' + item.planWorkingDays + ' 个工作日')));
+        const track = node('div', 'requirement-track');
+        const start = dayValue(item.plannedStartAt);
+        const end = dayValue(item.plannedDueAt);
+        if (start !== null && end !== null && plannedStart !== null && plannedEnd !== null && end >= start) {
+          const bar = node('div', 'requirement-bar ' + (item.due?.overdue ? 'risk' : ['delivered', 'non_delivery'].includes(item.semantic) ? 'done' : 'active'), item.rawStatus || '状态未知');
+          bar.style.left = Math.max(0, (start - plannedStart) / range * 100) + '%';
+          bar.style.width = Math.max(4, (end - start + 86400000) / (range + 86400000) * 100) + '%';
+          track.append(bar);
+        } else {
+          track.append(node('div', 'requirement-unplanned', '周期未配置，不绘制时间条'));
+        }
+        row.append(label, track);
+        timelineInner.append(row);
+      }
+      timeline.append(timelineInner);
+      timelineCard.append(timeline, node('div', 'requirement-timeline-legend', '绿色：终态 · 蓝色：进行中或待处理 · 红色：已逾期 · 日期缺失不绘制时间条'));
+    }
+    timelineSection.append(timelineCard);
+    wrap.append(timelineSection);
+
+    const otherSection = node('section', 'requirement-section');
+    const otherHead = node('div', 'section-head');
+    otherHead.append(node('div', null), node('span', 'pill', otherItems.length + ' 张'));
+    otherHead.firstChild.append(node('div', 'section-title', '其他直属工作单'), node('div', 'note', '不展开第二层后代；完整来源事实从版本任务进入'));
+    otherSection.append(otherHead);
+    if (!otherItems.length) {
+      otherSection.append(emptyCard('当前需求没有其他直属工作单。'));
+    } else {
+      const grid = node('div', 'requirement-other-grid');
+      for (const item of otherItems) {
+        const card = node('article', 'card requirement-work-card');
+        const cardHead = node('div', 'requirement-work-head');
+        cardHead.append(node('span', 'pill', item.typeName || item.kind), node('span', 'pill ' + (item.due?.overdue ? 'red' : 'blue'), item.rawStatus || '状态未知'));
+        card.append(cardHead, node('div', 'requirement-work-name', item.title), node('div', 'note', (item.executorName || '执行者身份待核对') + ' · ' + formatDay(item.plannedStartAt) + ' → ' + formatDay(item.plannedDueAt)), node('div', 'requirement-work-foot', item.issues?.length ? item.issues.length + ' 项数据问题' : '当前无数据问题'));
+        grid.append(card);
+      }
+      otherSection.append(grid);
+    }
+    wrap.append(otherSection);
   }
 
-  const card = node('div', 'card');
+  const card = node('div', 'card requirement-list');
   const head = node('div', 'section-head');
   const titles = node('div');
   titles.append(node('div', 'section-title', '核心需求阶段'), node('div', 'note', '当前版本共 ' + management.requirements.length + ' 个核心需求'));
   const actions = node('div', 'section-actions');
-  actions.append(link('打开版本任务', versionHash(version.id), 'button small'));
+  actions.append(node('span', 'pill blue', management.requirements.length + ' 个'));
   head.append(titles, actions);
   card.append(head);
   const rows = management.requirements.map(requirement => {
