@@ -28,6 +28,15 @@ test('P05 stages require every selected function, check all descendants and roll
  defect.source_status_id='done';defect.source_presence='missing_unknown';assert.equal(stages(root,items,rules,maps,['后台']).test.complete,false);
  assert.equal(stages(root,[root],rules,maps).test.complete,false);
 });
+test('stage counts use whole functions, accumulate detail scope and preserve unknown and exemptions',()=>{
+ const root=item('r','需求'),ui=item('ui','子需求','r',{function_name:'UI界面'}),ui2=item('ui2','子需求','r',{function_name:'UI界面',source_status_id:'dev'}),client=item('client','子需求','r',{function_name:'客户端'}),icon=item('icon','子需求','r',{function_name:'UI图标',source_status_id:'pending'});
+ const items=[root,ui,ui2,client,icon],rules=effectiveRules([{scope:'system',values:{foundation:['UI界面','客户端'],detail:['UI图标','后台']}}]);
+ let result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.completedCount,1);assert.equal(result.foundation.totalCount,2);assert.deepEqual(result.foundation.incompleteFunctions,['UI界面']);assert.equal(result.foundation.blockedTaskCount,1);
+ assert.equal(result.detail.completedCount,2);assert.equal(result.detail.totalCount,4);assert.deepEqual(result.detail.incompleteFunctions,['UI界面','UI图标']);assert.equal(result.detail.blockedTaskCount,2);
+ ui2.source_status_id='unmapped';result=stages(root,items,rules,maps);assert.equal(result.foundation.calculable,false);assert.equal(result.foundation.completedCount,1);assert.equal(result.detail.calculable,false);assert.deepEqual(result.detail.missingFunctions,['后台']);assert.deepEqual(result.detail.incompleteFunctions,['UI界面','UI图标','后台']);
+ ui2.source_status_id='cancel';icon.source_status_id='done';result=stages(root,items,rules,maps,['后台']);assert.equal(result.detail.complete,true);assert.equal(result.detail.completedCount,4);assert.equal(result.detail.blockedTaskCount,0);
+});
 test('P05 identifies acceptance by category/parent, never title; optimization counts and gates differ',()=>{
  const root=item('r','需求'),accept=item('a','任务','r',{category:'验收总单'}),task=item('at','任务','a'),wrong=item('wrong','任务','r',{title:'验收任务单'}),container=item('o','优化需求总单'),optimization=item('opt','优化需求','o'),child=item('ot','任务','opt',{source_status_id:'pending'});
  const items=[root,accept,task,wrong,container,optimization,child],bySource=new Map(items.map(i=>[i.source_task_id,i]));assert.equal(objectKind(task,bySource),'acceptance_task');assert.equal(objectKind(wrong,bySource),'auxiliary');assert.equal(optimizationSummary(items,maps)[0].stateComplete,true);assert.equal(optimizationSummary(items,maps)[0].completionGate,false);optimization.source_status_id='unknown';assert.equal(optimizationSummary(items,maps)[0].stateComplete,null);child.source_status_id='unknown';assert.equal(optimizationSummary(items,maps)[0].completionGate,null);

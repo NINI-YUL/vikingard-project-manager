@@ -143,8 +143,15 @@ function optimizationSummary(progress) {
 
 function requirementStage(stage) {
   if (!stage) return { text: '未知', cls: '' };
-  if (!stage.calculable) return { text: '不可计算', cls: 'amber' };
-  return stage.complete ? { text: '已完成', cls: 'green' } : { text: '未完成', cls: 'blue' };
+  const count = Number.isInteger(stage.completedCount) && Number.isInteger(stage.totalCount) ? stage.completedCount + ' / ' + stage.totalCount + ' · ' : '';
+  if (!stage.calculable) return { text: count + '不可计算', cls: 'amber' };
+  return stage.complete ? { text: count + '已完成', cls: 'green' } : { text: count + '未完成', cls: 'blue' };
+}
+
+function appendStageDetails(cell, stage) {
+  const incomplete = stage?.incompleteFunctions ?? [];
+  if (incomplete.length) cell.append(node('div', 'cell-note', '未完成职能：' + incomplete.join('、')));
+  if (stage?.blockedTaskCount) cell.append(node('div', 'cell-note', '受阻工单：' + stage.blockedTaskCount + ' 张'));
 }
 
 function stageCell(progress, key) {
@@ -770,13 +777,13 @@ async function renderVersionDetail(current, view) {
       const foundationStage = requirementStage(requirement.stages.foundation);
       const foundationCell = node('td');
       foundationCell.append(node('span', 'pill ' + foundationStage.cls, foundationStage.text));
-      const missingFoundation = requirement.stages.foundation?.missingFunctions ?? [];
-      if (missingFoundation.length) foundationCell.append(node('div', 'cell-note', '缺少职能：' + missingFoundation.join('、')));
+      appendStageDetails(foundationCell, requirement.stages.foundation);
       row.append(foundationCell);
       const detailStage = requirementStage(requirement.stages.detail);
       const testStage = requirementStage(requirement.stages.test);
       const detailCell = node('td');
       detailCell.append(node('span', 'pill ' + detailStage.cls, detailStage.text), node('div', 'cell-note', '测试阶段：' + testStage.text));
+      appendStageDetails(detailCell, requirement.stages.detail);
       row.append(detailCell);
       const riskCell = node('td');
       riskCell.append(node('span', 'pill', '待接入'));
@@ -1255,7 +1262,7 @@ async function renderRequirements(current, view) {
       const state = requirementStage(requirement.stages[key]);
       const cell = node('td');
       cell.append(node('span', 'pill ' + state.cls, state.text));
-      if (requirement.stages[key]?.blockedTaskIds?.length) cell.append(node('div', 'cell-note', '受影响任务：' + requirement.stages[key].blockedTaskIds.length + ' 张'));
+      appendStageDetails(cell, requirement.stages[key]);
       row.append(cell);
     }
     const action = node('td');

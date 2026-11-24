@@ -35,9 +35,9 @@ function management(index) {
   const requirement = {
     id: 'root', title: '测试核心需求',
     stages: {
-      foundation: { calculable: true, complete: false, missingFunctions: ['客户端'] },
-      detail: { calculable: true, complete: false, missingFunctions: ['UI图标'] },
-      test: { calculable: false, complete: false, missingFunctions: [] }
+      foundation: { calculable: true, complete: false, completedCount: 0, totalCount: 2, incompleteFunctions: ['UI界面', '客户端'], missingFunctions: ['客户端'], blockedTaskCount: 2 },
+      detail: { calculable: true, complete: false, completedCount: 0, totalCount: 3, incompleteFunctions: ['UI界面', '客户端', 'UI图标'], missingFunctions: ['UI图标'], blockedTaskCount: 3 },
+      test: { calculable: false, complete: false, completedCount: 0, totalCount: 3, blockedTaskCount: 3, missingFunctions: [] }
     }
   };
   return {
@@ -130,6 +130,9 @@ let server, browser;
     assert.equal(await page.locator('.version-rail-item').count(), 2);
     assert.equal(await page.locator('.version-rail-item.active').innerText(), '浏览器测试版本 1\n1 个核心需求');
     assert.match(await page.locator('.version-detail-pane').innerText(), /风险需求\s*待接入/);
+    assert.match(await page.locator('.version-requirements').innerText(), /0 \/ 2 · 未完成/);
+    assert.match(await page.locator('.version-requirements').innerText(), /未完成职能：UI界面、客户端/);
+    assert.match(await page.locator('.version-requirements').innerText(), /受阻工单：2 张/);
     assert.match(await page.locator('.version-detail-pane').innerText(), /当前管理信号/);
     assert.match(await page.locator('.version-detail-pane').innerText(), /最近变化/);
     await page.screenshot({ path: path.join(output, 'p09-version-desktop.png'), fullPage: true });
