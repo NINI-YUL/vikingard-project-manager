@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const http = require('node:http');
+const { pathToFileURL } = require('node:url');
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
@@ -57,28 +57,24 @@ const tasks = Array.from({ length: 101 }, (_, index) => ({
   sourceTaskId: 'task-' + index, title: '测试任务 ' + index, visibleKey: String(107542 + index), parentVisibleKey: '107541', parentSourceTaskId: 'root',
   typeName: '子需求', functionName: 'UI界面', sourcePresence: 'current', structureIssues: [], rawStatus: '开发中'
 }));
-const files = {
-  '/': 'index.html', '/acceptance': 'acceptance.html', '/shell.js': 'shell.js',
-  '/shell.css': 'shell.css', '/management-ui.js': 'management-ui.js', '/function-catalog.mjs': '../function-catalog.mjs'
-};
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 let server, browser;
 
 (async () => {
   try {
-    server = http.createServer((request, response) => {
-      const file = new URL(request.url, 'http://localhost').pathname;
-      if (!files[file]) return response.writeHead(404).end();
-      response.setHeader('Content-Type', /\.(js|mjs)$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html');
-      response.end(fs.readFileSync(path.join(root, 'app/public', files[file])));
-    });
+    const { createApplication } = await import(pathToFileURL(path.join(root, 'app/server.mjs')).href);
+    const config = { origin: 'http://127.0.0.1:0', loginEnabled: true };
+    server = createApplication({ query() { throw new Error('Unexpected database read in isolated browser check'); } }, config);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const origin = 'http://127.0.0.1:' + server.address().port;
+    const origin = config.origin = 'http://127.0.0.1:' + server.address().port;
     browser = await chromium.launch({ headless: true, channel: 'chrome' });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     page.setDefaultTimeout(10000);
-    const errors = [];
+    const errors = [], consoleErrors = [], expectedHttpFailures = new Map();
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') consoleErrors.push({ text: message.text(), url: message.location().url }); });
+    const fontResponses = [];
+    page.on('response', response => { if (/\/assets\/jakarta-\d+\.ttf$/.test(response.url())) fontResponses.push(response); });
     await page.route('**/api/**', async route => {
       assert.equal(route.request().method(), 'GET');
       const url = new URL(route.request().url());
@@ -144,8 +140,77 @@ let server, browser;
     assert.deepEqual(position, { alignedRows: true, alignedColumns: true, sideBySide: true });
     assert.match(await page.locator('.version-detail-pane').innerText(), /当前管理信号/);
     assert.match(await page.locator('.version-detail-pane').innerText(), /最近变化/);
+    assert.equal(await page.locator('body').evaluate(element => element.classList.contains('version-page')), true);
+    await page.evaluate(() => document.fonts.ready);
+    for (const weight of [400, 500, 600, 700]) {
+      assert.equal(await page.evaluate(weight => document.fonts.check(weight + ' 13px "Plus Jakarta Sans"'), weight), true);
+    }
+    assert.ok(fontResponses.length > 0, 'Version page must request local fonts');
+    assert.ok(fontResponses.every(response => response.status() === 200));
+    const fontClient = await page.context().newCDPSession(page);
+    await fontClient.send('DOM.enable'); await fontClient.send('CSS.enable');
+    const documentNode = await fontClient.send('DOM.getDocument');
+    const titleNode = await fontClient.send('DOM.querySelector', { nodeId: documentNode.root.nodeId, selector: '.version-detail-title' });
+    const titleFonts = await fontClient.send('CSS.getPlatformFontsForNode', { nodeId: titleNode.nodeId });
+    assert.ok(titleFonts.fonts.some(font => font.isCustomFont && font.familyName.includes('Jakarta')));
+    await fontClient.detach();
+    const visualComparisons = [];
+    if (process.env.VIKINGPM_V2_ORIGIN) {
+      const prototype = await browser.newPage();
+      await prototype.goto(process.env.VIKINGPM_V2_ORIGIN);
+      await prototype.locator('.side [data-page="versions"]').click();
+      await prototype.locator('.version-workspace').waitFor();
+      await prototype.evaluate(() => document.fonts.ready);
+      const pairs = [
+        ['body', 'body', ['fontFamily', 'fontSize', 'fontSynthesis', 'fontVariantNumeric', 'color', 'padding']],
+        ['.top', '.top', ['minHeight', 'padding', 'backgroundColor']],
+        ['.title', '.title', ['fontSize', 'lineHeight', 'fontWeight', 'color', 'letterSpacing']],
+        ['.nav.active', '.nav.active', ['fontSize', 'fontWeight', 'gap', 'color', 'backgroundColor', 'padding']],
+        ['.nav-icon', '.nav svg', ['width', 'height', 'strokeWidth']],
+        ['.content', '.version-style .detail-page', ['padding', 'backgroundColor']],
+        ['.version-workspace', '.version-workspace', ['gap']],
+        ['.version-rail-toggle', '.version-rail-toggle', ['width', 'height', 'borderRadius']],
+        ['.version-rail-item.active', '.version-rail-item.active', ['backgroundColor', 'borderColor', 'borderRadius']],
+        ['.version-rail-item b', '.version-rail-item b', ['fontSize', 'fontWeight', 'lineHeight']],
+        ['.version-detail-title', '.detail-title', ['fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'color']],
+        ['.version-kpis', '.version-kpis', ['gap']],
+        ['.version-kpis .metric-card', '.version-kpis .card', ['padding', 'minHeight', 'borderRadius', 'borderColor', 'boxShadow']],
+        ['.version-kpis .metric-value', '.version-kpis .metric', ['fontSize', 'lineHeight', 'fontWeight', 'letterSpacing', 'color']],
+        ['.version-requirements', '.version-style .detail-layout>.card', ['padding', 'borderRadius', 'borderColor', 'boxShadow']],
+        ['.version-requirements .section-title', '.version-style .section-title', ['fontSize', 'lineHeight', 'fontWeight', 'color']],
+        ['.version-requirements th', '.version-style .detail-table th', ['fontSize', 'lineHeight', 'fontWeight', 'padding', 'backgroundColor']],
+        ['.version-requirements td', '.version-style .detail-table td', ['fontSize', 'lineHeight', 'fontWeight', 'padding', 'color']],
+        ['.version-requirements .pill', '.version-style .detail-table .pill', ['fontSize', 'lineHeight', 'fontWeight', 'padding', 'borderRadius']],
+        ['.version-signal-list', '.version-style .signal-list', ['gap', 'marginTop']],
+        ['.version-signal.red', '.version-style .signal.red-line', ['borderLeftColor', 'paddingLeft']],
+        ['.version-signal.red b', '.version-style .signal.red-line b', ['fontSize', 'lineHeight', 'fontWeight', 'color']],
+        ['.version-timeline-item b', '.version-style .timeline b', ['fontSize', 'fontWeight', 'color']]
+      ];
+      for (const width of [1440, 768, 375]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await prototype.setViewportSize({ width, height: 1000 });
+        for (const [actualSelector, expectedSelector, properties] of pairs) {
+          const read = (target, selector) => target.locator(selector).first().evaluate((element, properties) => {
+            const style = getComputedStyle(element);
+            return Object.fromEntries(properties.map(property => [property, style[property]]));
+          }, properties);
+          const actual = await read(page, actualSelector), expected = await read(prototype, expectedSelector);
+          visualComparisons.push({ width, selector: actualSelector, actual, expected });
+        }
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await page.screenshot({ path: path.join(output, 'p09-version-v2-' + width + '.png'), fullPage: true });
+      }
+      await prototype.close();
+      fs.writeFileSync(path.join(output, 'p09-v2-comparison.json'), JSON.stringify(visualComparisons, null, 2));
+      for (const comparison of visualComparisons) assert.deepEqual(comparison.actual, comparison.expected, comparison.width + 'px ' + comparison.selector);
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.locator('.version-rail-toggle').click();
+    assert.equal(await page.locator('.version-rail-list').isVisible(), false);
+    await page.locator('.version-rail-toggle').click();
+    assert.equal(await page.locator('.version-rail-list').isVisible(), true);
     await page.screenshot({ path: path.join(output, 'p09-version-desktop.png'), fullPage: true });
-    await page.setViewportSize({ width: 1024, height: 900 });
+    await page.setViewportSize({ width: 768, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: path.join(output, 'p09-version-tablet.png'), fullPage: true });
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -159,6 +224,11 @@ let server, browser;
     await page.getByLabel('搜索编号或标题').fill('Viking-107542');
     await page.waitForFunction(() => document.querySelector('.count-line').textContent.includes('当前筛选显示 1 张'));
     await page.getByLabel('搜索编号或标题').fill('');
+    for (const width of [375, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.screenshot({ path: path.join(output, 'p09-version-expanded-' + width + '.png') });
+    }
     await page.screenshot({ path: path.join(output, 'p09-version-expanded.png') });
     await page.getByRole('button', { name: '下一页', exact: true }).click();
     await page.waitForFunction(() => location.hash.includes('offset=100') && document.querySelector('.count-line')?.textContent.includes('本页 1 张'));
@@ -173,6 +243,7 @@ let server, browser;
     assert.equal(await page.locator('.version-tasks').evaluate(element => element.open), true);
     await page.getByRole('link', { name: '需求', exact: true }).click();
     await page.locator('.requirement-overview').waitFor();
+    assert.equal(await page.locator('body').evaluate(element => element.classList.contains('version-page')), false);
     assert.match(await page.locator('.requirement-overview').innerText(), /测试核心需求/);
     assert.equal(await page.locator('.requirement-timeline-row').count(), 2);
     assert.equal(await page.locator('.requirement-work-card').count(), 1);
@@ -180,7 +251,7 @@ let server, browser;
 
     await page.goto(origin + '/#/action');
     await page.locator('.action-grid').waitFor();
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 375, height: 844 });
     await page.goto(origin + '/#/versions/' + versionIds[0]);
     await page.locator('.version-workspace').waitFor();
     assert.equal(await page.locator('.version-tasks').evaluate(element => element.open), false);
@@ -221,6 +292,7 @@ let server, browser;
 
     await page.route('**/api/management/versions/*', async route => {
       const index = versionIds.indexOf(new URL(route.request().url()).pathname.split('/').at(-1));
+      if (index) expectedHttpFailures.set(route.request().url(), 503);
       await route.fulfill(index ? { status: 503, json: { error: '测试来源不可用' } } : { json: management(0) });
     });
     await page.goto(origin + '/?scenario=failure#/action');
@@ -238,7 +310,10 @@ let server, browser;
     assert.equal(await metric(3).innerText(), '未知');
     assert.match(await page.locator('#view').innerText(), /已知逾期 1 张；另 1 张到期未知/);
     assert.match(await page.locator('#view').innerText(), /无法判断到期/);
-    await page.route('**/api/me', route => route.fulfill({ status: 401, json: { error: '登录已过期' } }));
+    await page.route('**/api/me', route => {
+      expectedHttpFailures.set(route.request().url(), 401);
+      return route.fulfill({ status: 401, json: { error: '登录已过期' } });
+    });
     await page.reload();
     await page.locator('#login-view').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#app').isVisible(), false);
@@ -312,6 +387,10 @@ let server, browser;
     assert.match(await page.locator('#view').innerText(), /隔离验证/);
     await page.screenshot({ path: path.join(output, 'p09-audit.png'), fullPage: true });
     assert.deepEqual(errors, []);
+    for (const message of consoleErrors) {
+      const expectedStatus = expectedHttpFailures.get(message.url);
+      assert.ok(expectedStatus && message.text.startsWith('Failed to load resource:') && message.text.includes('status of ' + expectedStatus), JSON.stringify(message));
+    }
     console.log('PASS P09 browser: desktop/mobile version and requirement workspaces, function scopes, data tab, pagination, task deep link, delayed navigation, failures, expired session, viewer restrictions, owner config preview/save and audit.');
   } catch (error) {
     console.error(error.message);

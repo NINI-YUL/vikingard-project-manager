@@ -440,6 +440,7 @@ async function route() {
   clearMessage();
   const current = parseHash(location.hash);
   if (!location.hash) history.replaceState(null, '', '#/action');
+  document.body.classList.toggle('version-page', ['versions', 'versionDetail'].includes(current.name));
   setNav(current);
   syncVersionSelect(current);
   syncFunctionFilter(current);

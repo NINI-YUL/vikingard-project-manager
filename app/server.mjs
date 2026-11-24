@@ -9,6 +9,9 @@ import { beginLogin, completeLogin } from './dingtalk.mjs';
 import { enrollVersion, syncVersion } from './version-source.mjs';
 
 const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/acceptance', ['text/html; charset=utf-8','acceptance.html']],['/acceptance.html', ['text/html; charset=utf-8','acceptance.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/shell.js',['text/javascript; charset=utf-8','shell.js']],['/shell.css',['text/css; charset=utf-8','shell.css']],['/function-catalog.mjs',['text/javascript; charset=utf-8','../function-catalog.mjs']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
+for (const weight of [400, 500, 600, 700]) {
+  assets.set(`/assets/jakarta-${weight}.ttf`, ['font/ttf', `assets/jakarta-${weight}.ttf`]);
+}
 function cookies(req) {
   const result = {};
   for (const item of (req.headers.cookie ?? '').split(';')) {
@@ -31,7 +34,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
     res.setHeader('Cache-Control','no-store');
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('X-Content-Type-Options','nosniff');
-    res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
     res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
     if (config.origin.startsWith('https:')) res.setHeader('Strict-Transport-Security','max-age=86400');
     try {

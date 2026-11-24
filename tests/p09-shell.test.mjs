@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createApplication } from '../app/server.mjs';
 import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber } from '../app/public/shell.js';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
@@ -133,4 +134,22 @@ test('manual TB refresh targets selected version or all active versions', () => 
   assert.deepEqual(syncTargetVersions(versions), versions);
   assert.deepEqual(syncTargetVersions(versions, 'v2'), [{ id: 'v2' }]);
   assert.deepEqual(syncTargetVersions(versions, 'missing'), []);
+});
+
+
+test('local V2 fonts are served without login or database access and CSP permits only same-origin fonts', async t => {
+  const config = { origin: 'http://127.0.0.1:0', loginEnabled: false };
+  const server = createApplication({ query() { assert.fail('Static fonts must not query the database'); } }, config);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  config.origin = 'http://127.0.0.1:' + server.address().port;
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  for (const weight of [400, 500, 600, 700]) {
+    const response = await fetch(config.origin + '/assets/jakarta-' + weight + '.ttf');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'font/ttf');
+    assert.match(response.headers.get('content-security-policy'), /font-src 'self';/);
+    assert.match(response.headers.get('content-security-policy'), /default-src 'none';/);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.deepEqual(bytes, await readFile(new URL('../app/public/assets/jakarta-' + weight + '.ttf', import.meta.url)));
+  }
 });
