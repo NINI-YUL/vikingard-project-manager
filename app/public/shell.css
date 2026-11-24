@@ -284,7 +284,7 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
   .nav, .button, .link-button, .function-filter summary { min-height: 44px; }
   .function-filter summary { padding-block: 12px; }
   .function-filter label { min-height: 44px; }
-  .config-link { margin-left: auto; }
+  .sync-button { margin-left: auto; }
   .action-page .scope { gap: 8px; }
   .scope-guide p { position: static; width: auto; }
 }

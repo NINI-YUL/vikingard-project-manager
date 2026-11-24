@@ -92,6 +92,7 @@ let server, browser;
 
     await page.goto(origin);
     await page.locator('.action-grid').waitFor();
+    assert.equal(await page.locator('#tb-sync').isVisible(), false);
     assert.equal(await metric(3).innerText(), '2');
     assert.equal(await metric(4).innerText(), '1');
     await page.screenshot({ path: path.join(output, 'p09-aligned-desktop.png'), fullPage: true });
@@ -179,6 +180,14 @@ let server, browser;
     await page.route('**/api/me', route => route.fulfill({ json: { id: 'owner', displayName: '测试所有者', role: 'owner', csrf: 'fake-csrf' } }));
     await page.route('**/api/access', route => route.fulfill({ json: [{ id: 'owner', displayName: '测试所有者', role: 'owner', active: true, mappingEnabled: true, confirmed: true }] }));
     await page.route('**/api/audit', route => route.fulfill({ json: [{ id: '1', action: 'management.calendar', reason: '隔离验证', occurred_at: '2026-11-23T02:00:00Z', before_value: null, after_value: { working: true } }] }));
+    const syncCalls = [];
+    await page.route('**/api/versions/*/sync', async route => {
+      assert.equal(route.request().method(), 'POST');
+      assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
+      assert.equal(route.request().postDataJSON().reason, '顶部按钮手动获取最新 TB 工单状态');
+      syncCalls.push(new URL(route.request().url()).pathname.split('/').at(-2));
+      await route.fulfill({ json: { status: 'succeeded', importedCount: 6, issueCount: 0 } });
+    });
     let ownerReads = 0;
     await page.route('**/api/management/versions/*', async route => {
       ownerReads++;
@@ -205,6 +214,15 @@ let server, browser;
     });
     await page.goto(origin + '/?scenario=config-owner#/action');
     await page.locator('.action-grid').waitFor();
+    await page.getByRole('button', { name: '获取最新TB', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#tb-sync').disabled);
+    assert.deepEqual(syncCalls, versionIds);
+    assert.match(await page.locator('#message').innerText(), /2\/2 个版本同步成功/);
+    await page.selectOption('#version-select', versionIds[0]);
+    await page.getByRole('button', { name: '获取最新TB', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#tb-sync').disabled);
+    assert.deepEqual(syncCalls, [...versionIds, versionIds[0]]);
+    assert.match(await page.locator('#message').innerText(), /同步 6 张工单/);
     await page.getByRole('link', { name: '配置库', exact: true }).click();
     await page.locator('.config-layout').waitFor();
     await page.getByText('公司工作日历', { exact: true }).click();

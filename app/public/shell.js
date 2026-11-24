@@ -254,6 +254,55 @@ export function scopeActionContexts(contexts, versionId, functions = [], dataTab
   }));
 }
 
+export function syncTargetVersions(versions, selectedVersionId = '') {
+  return selectedVersionId ? versions.filter(version => version.id === selectedVersionId) : versions;
+}
+
+async function syncLatestTb() {
+  const control = $('tb-sync');
+  const originalText = control.textContent;
+  control.disabled = true;
+  control.textContent = '正在获取…';
+  clearMessage();
+  try {
+    const versions = await loadVersions();
+    const targets = syncTargetVersions(versions, $('version-select').value);
+    if (!targets.length) throw new ApiError(404, '没有可同步的活跃版本。');
+    const results = [];
+    for (const version of targets) {
+      try {
+        const result = await api('/api/versions/' + version.id + '/sync', {
+          method: 'POST',
+          body: { reason: '顶部按钮手动获取最新 TB 工单状态' }
+        });
+        results.push({ version, result });
+      } catch (error) {
+        results.push({ version, error });
+        if ([401, 403, 503].includes(error.status)) break;
+      }
+    }
+    state.versions = null;
+    state.management.clear();
+    state.tasks.clear();
+    await route();
+    const succeeded = results.filter(item => item.result?.status === 'succeeded');
+    const failed = results.filter(item => !item.result || item.result.status !== 'succeeded');
+    if (!failed.length) {
+      const detail = targets.length === 1
+        ? '同步 ' + succeeded[0].result.importedCount + ' 张工单，' + succeeded[0].result.issueCount + ' 张存在结构问题。'
+        : succeeded.length + '/' + targets.length + ' 个版本同步成功。';
+      showMessage('已获取最新 TB。' + detail, 'success');
+    } else {
+      showMessage('获取完成：' + succeeded.length + ' 个版本成功，' + failed.length + ' 个版本失败；失败版本保留上次成功数据。', 'error');
+    }
+  } catch (error) {
+    if (error.status !== 401) showMessage('获取最新 TB 失败：' + error.message, 'error');
+  } finally {
+    control.disabled = false;
+    control.textContent = originalText;
+  }
+}
+
 function syncFunctionFilter(current) {
   $('function-filter').hidden = current.name !== 'action' || current.tab === 'data';
   const selected = selectedFunctions(current.raw);
@@ -1405,6 +1454,9 @@ async function boot() {
     $('app').hidden = false;
     $('side-user').textContent = state.actor.displayName + ' · ' + (ROLE_NAMES[state.actor.role] ?? '权限未知');
     $('role-chip').textContent = ROLE_NAMES[state.actor.role] ?? '权限未知';
+    const canSync = ['admin', 'owner'].includes(state.actor.role);
+    $('tb-sync').hidden = !canSync;
+    if (canSync) $('tb-sync').addEventListener('click', syncLatestTb);
     $('logout').addEventListener('click', async () => {
       try {
         await api('/auth/logout', { method: 'POST', body: {} });

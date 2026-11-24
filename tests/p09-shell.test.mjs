@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts } from '../app/public/shell.js';
+import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions } from '../app/public/shell.js';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 
@@ -106,4 +106,13 @@ test('browser and server use one confirmed function catalog', async () => {
   assert.ok(server.functions.includes('UI图标'));
   const index = await read('app/public/index.html');
   assert.equal((index.match(/class="nav-icon"/g) ?? []).length, 8);
+  assert.match(index, /id="tb-sync"[^>]*>获取最新TB<\/button>/);
+  assert.doesNotMatch(index, />打开配置库<\/a>/);
+});
+
+test('manual TB refresh targets selected version or all active versions', () => {
+  const versions = [{ id: 'v1' }, { id: 'v2' }];
+  assert.deepEqual(syncTargetVersions(versions), versions);
+  assert.deepEqual(syncTargetVersions(versions, 'v2'), [{ id: 'v2' }]);
+  assert.deepEqual(syncTargetVersions(versions, 'missing'), []);
 });
