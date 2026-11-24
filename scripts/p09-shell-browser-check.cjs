@@ -10,7 +10,7 @@ fs.mkdirSync(output, { recursive: true });
 const versionIds = ['11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222'];
 const versions = versionIds.map((id, index) => ({
   id, displayName: '浏览器测试版本 ' + (index + 1), ownerName: '测试负责人', ownerConfirmed: true,
-  projectName: '隔离测试项目', syncStatus: 'succeeded', lastSuccessAt: '2026-11-23T02:00:00Z', syncStartAt: '2026-11-20T02:00:00Z'
+  projectName: '隔离测试项目', uniqueIdPrefix: 'Viking', syncStatus: 'succeeded', lastSuccessAt: '2026-11-23T02:00:00Z', syncStartAt: '2026-11-20T02:00:00Z'
 }));
 
 // Fixtures are local: this check never reads a real login session or sends external writes.
@@ -31,6 +31,7 @@ const facts = [
   fact('aux', 'auxiliary', 'UI界面', { overdue: true, workingDays: 5 })
 ];
 facts[0].issues = ['结构待核对'];
+facts[0].key = '107541';
 function management(index) {
   const requirement = {
     id: 'root', title: '测试核心需求',
@@ -53,7 +54,7 @@ function management(index) {
   };
 }
 const tasks = Array.from({ length: 101 }, (_, index) => ({
-  sourceTaskId: 'task-' + index, title: '测试任务 ' + index, visibleKey: 'TEST-' + index,
+  sourceTaskId: 'task-' + index, title: '测试任务 ' + index, visibleKey: String(107542 + index), parentVisibleKey: '107541', parentSourceTaskId: 'root',
   typeName: '子需求', functionName: 'UI界面', sourcePresence: 'current', structureIssues: [], rawStatus: '开发中'
 }));
 const files = {
@@ -132,20 +133,44 @@ let server, browser;
     assert.match(await page.locator('.version-detail-pane').innerText(), /风险需求\s*待接入/);
     assert.match(await page.locator('.version-requirements').innerText(), /0 \/ 2 · 未完成/);
     assert.match(await page.locator('.version-requirements').innerText(), /未完成职能：UI界面、客户端/);
-    assert.match(await page.locator('.version-requirements').innerText(), /受阻工单：2 张/);
+    assert.doesNotMatch(await page.locator('#view').innerText(), /受阻工单|测试阶段：|需求 ID root/);
+    assert.match(await page.locator('.version-requirements').innerText(), /Viking-107541/);
+    assert.equal(await page.locator('.version-tasks').evaluate(element => element.open), false);
+    const position = await page.locator('.version-detail-layout').evaluate(element => {
+      const bounds = selector => element.querySelector(selector).getBoundingClientRect();
+      const tasks = bounds('.version-tasks'), changes = bounds('.version-changes'), requirements = bounds('.version-requirements');
+      return { alignedRows: Math.abs(tasks.top - changes.top) < 1, alignedColumns: Math.abs(tasks.left - requirements.left) < 1, sideBySide: tasks.right <= changes.left };
+    });
+    assert.deepEqual(position, { alignedRows: true, alignedColumns: true, sideBySide: true });
     assert.match(await page.locator('.version-detail-pane').innerText(), /当前管理信号/);
     assert.match(await page.locator('.version-detail-pane').innerText(), /最近变化/);
     await page.screenshot({ path: path.join(output, 'p09-version-desktop.png'), fullPage: true });
-    await page.getByRole('region', { name: '任务快照', exact: true }).waitFor();
+    await page.setViewportSize({ width: 1024, height: 900 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: path.join(output, 'p09-version-tablet.png'), fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.locator('.task-summary').focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('region', { name: '任务详情列表', exact: true }).waitFor();
+    const firstTask = page.getByRole('region', { name: '任务详情列表', exact: true }).locator('tbody tr').first();
+    assert.equal(await firstTask.locator('td').nth(0).locator('a').innerText(), 'Viking-107542');
+    assert.equal(await firstTask.locator('td').nth(3).innerText(), 'Viking-107541');
+    assert.equal(await firstTask.locator('td').nth(1).innerText(), '测试任务 0');
+    await page.getByLabel('搜索编号或标题').fill('Viking-107542');
+    await page.waitForFunction(() => document.querySelector('.count-line').textContent.includes('当前筛选显示 1 张'));
+    await page.getByLabel('搜索编号或标题').fill('');
+    await page.screenshot({ path: path.join(output, 'p09-version-expanded.png') });
     await page.getByRole('button', { name: '下一页', exact: true }).click();
     await page.waitForFunction(() => location.hash.includes('offset=100') && document.querySelector('.count-line')?.textContent.includes('本页 1 张'));
-    await page.getByRole('region', { name: '任务快照', exact: true }).locator('tbody tr').first().click();
+    await page.getByRole('region', { name: '任务详情列表', exact: true }).locator('tbody tr').first().click();
     await page.locator('.task-panel').waitFor();
     assert.equal(await page.locator('.panel-title').innerText(), '测试任务 100');
     await page.reload();
     await page.locator('.task-panel').waitFor();
     assert.equal(await page.locator('.panel-title').innerText(), '测试任务 100');
     assert.match(page.url(), /offset=100&task=task-100/);
+    assert.match(await page.locator('.task-panel').innerText(), /Viking-107642/);
+    assert.equal(await page.locator('.version-tasks').evaluate(element => element.open), true);
     await page.getByRole('link', { name: '需求', exact: true }).click();
     await page.locator('.requirement-overview').waitFor();
     assert.match(await page.locator('.requirement-overview').innerText(), /测试核心需求/);
@@ -158,8 +183,13 @@ let server, browser;
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(origin + '/#/versions/' + versionIds[0]);
     await page.locator('.version-workspace').waitFor();
+    assert.equal(await page.locator('.version-tasks').evaluate(element => element.open), false);
     await page.screenshot({ path: path.join(output, 'p09-version-mobile.png'), fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.locator('.task-summary').click();
+    await page.getByRole('region', { name: '任务详情列表', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: path.join(output, 'p09-version-mobile-expanded.png') });
     await page.goto(origin + '/#/requirements?version=' + versionIds[0] + '&requirement=root');
     await page.locator('.requirement-overview').waitFor();
     await page.screenshot({ path: path.join(output, 'p09-requirement-mobile.png'), fullPage: true });

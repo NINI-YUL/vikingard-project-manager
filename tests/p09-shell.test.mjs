@@ -1,9 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions } from '../app/public/shell.js';
+import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber } from '../app/public/shell.js';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
+
+test('task numbers use the source project prefix without guessing or duplicating it', () => {
+  assert.equal(formatTaskNumber('107541', 'Viking'), 'Viking-107541');
+  assert.equal(formatTaskNumber(107541, 'Viking-'), 'Viking-107541');
+  assert.equal(formatTaskNumber('Viking-107541', 'Viking'), 'Viking-107541');
+  assert.equal(formatTaskNumber('OTHER-42', 'Viking'), 'OTHER-42');
+  assert.equal(formatTaskNumber('107541', null), '107541（前缀待核对）');
+  assert.equal(formatTaskNumber(null, 'Viking'), '无编号');
+});
 
 test('P09 shell routes keep stable version and task objects', () => {
   assert.deepEqual(parseHash(''), { raw: '/action', offset: 0, taskId: null, versionId: null, requirementId: null, tab: null, name: 'action' });

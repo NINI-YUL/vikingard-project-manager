@@ -213,6 +213,17 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
 .version-kpis .metric-card { min-height: 112px; padding: 18px; }
 .version-kpis .metric-value { letter-spacing: 0; }
 .version-detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 18px; align-items: start; margin-bottom: 18px; }
+.version-detail-layout > .card { margin-top: 0; }
+.task-summary { display: flex; min-height: 32px; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.task-summary::-webkit-details-marker { display: none; }
+.task-summary::before { content: '▸'; color: var(--ink-3); }
+.version-tasks[open] > .task-summary::before { content: '▾'; }
+.task-summary .note { margin-left: auto; }
+.task-body { margin-top: 14px; }
+.version-tasks .task-layout.with-panel { grid-template-columns: minmax(0, 1fr); }
+.version-tasks .task-panel { position: static; max-height: none; }
+.version-tasks table { min-width: 900px; }
+.task-number { white-space: nowrap; font-size: 11px; }
 .version-requirements .table-wrap { border: 0; border-radius: 6px; }
 .version-detail-side { min-width: 0; }
 .version-signal-list { display: grid; gap: 12px; margin-top: 14px; }
@@ -314,6 +325,7 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
   .version-rail-item { min-width: 132px; }
   .version-kpis { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .version-detail-title { font-size: 24px; }
+  .task-summary { min-height: 44px; }
   .requirement-overview { padding: 18px; }
   .requirement-overview-facts { grid-template-columns: minmax(0, 1fr); }
   .requirement-overview-fact, .requirement-overview-fact:nth-child(n + 3) { padding: 10px 0; border-top: 1px solid var(--line); }

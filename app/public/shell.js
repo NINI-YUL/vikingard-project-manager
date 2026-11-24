@@ -25,6 +25,7 @@ const state = {
   management: new Map(),
   tasks: new Map(),
   filters: new Map(),
+  expandedTasks: new Set(),
   actionTab: 'delivery',
   versionRailCollapsed: false,
   routeRevision: 0
@@ -127,6 +128,14 @@ function ownerText(version) {
   return version.ownerConfirmed ? version.ownerName : version.ownerName + '（身份待确认）';
 }
 
+export function formatTaskNumber(value, prefix) {
+  const key = String(value ?? '').trim();
+  if (!key) return '无编号';
+  if (!/^\d+$/.test(key)) return key;
+  const projectPrefix = String(prefix ?? '').trim().replace(/-+$/, '');
+  return projectPrefix ? projectPrefix + '-' + key : key + '（前缀待核对）';
+}
+
 function stageSummary(progress, key) {
   const stage = progress?.[key];
   if (!stage) return { text: '未知', detail: '尚未取得计算结果' };
@@ -151,7 +160,6 @@ function requirementStage(stage) {
 function appendStageDetails(cell, stage) {
   const incomplete = stage?.incompleteFunctions ?? [];
   if (incomplete.length) cell.append(node('div', 'cell-note', '未完成职能：' + incomplete.join('、')));
-  if (stage?.blockedTaskCount) cell.append(node('div', 'cell-note', '受阻工单：' + stage.blockedTaskCount + ' 张'));
 }
 
 function stageCell(progress, key) {
@@ -455,6 +463,7 @@ async function renderRoute(current, view, revision) {
   if (revision !== state.routeRevision) return;
   populateVersionSelect(versions);
   syncVersionSelect(current);
+  if (!['versions', 'versionDetail'].includes(current.name)) state.expandedTasks.clear();
   if (current.name === 'action') return renderAction(current, view);
   if (current.name === 'versions') return renderVersions(view);
   if (current.name === 'versionDetail') return renderVersionDetail(current, view);
@@ -737,6 +746,8 @@ async function renderVersionDetail(current, view) {
   const hero = node('div', 'version-detail-hero');
   hero.append(node('div', 'note', '版本'), node('h1', 'version-detail-title', version.displayName), node('div', 'sub', 'Teambition 同步起点：' + formatDate(version.syncStartAt)));
   detailPane.append(breadcrumbs, hero);
+  const detailLayout = node('div', 'version-detail-layout');
+  let changesCard;
 
   if (context?.error) {
     detailPane.append(errorCard('计算事实读取失败：' + context.error.message, async () => {
@@ -758,7 +769,6 @@ async function renderVersionDetail(current, view) {
     );
     detailPane.append(metrics);
 
-    const detailLayout = node('div', 'version-detail-layout');
     const reqCard = node('div', 'card version-requirements');
     const reqHead = node('div', 'section-head');
     const reqTitles = node('div');
@@ -770,9 +780,10 @@ async function renderVersionDetail(current, view) {
     const reqRows = management.requirements.map(requirement => {
       const row = node('tr');
       const name = node('td');
-      name.append(link(requirement.title || '未命名需求', requirementsHash(version.id, requirement.id), 'version-name'), node('div', 'cell-note', '需求 ID ' + requirement.id));
+      const root = management.items.find(item => item.id === requirement.id);
+      name.append(link(requirement.title || '未命名需求', requirementsHash(version.id, requirement.id), 'version-name'), node('div', 'cell-note task-number', formatTaskNumber(root?.key, version.uniqueIdPrefix)));
       row.append(name);
-      const owner = management.items.find(item => item.id === requirement.id)?.executorName;
+      const owner = root?.executorName;
       row.append(node('td', null, owner || '身份待核对'));
       const foundationStage = requirementStage(requirement.stages.foundation);
       const foundationCell = node('td');
@@ -780,9 +791,8 @@ async function renderVersionDetail(current, view) {
       appendStageDetails(foundationCell, requirement.stages.foundation);
       row.append(foundationCell);
       const detailStage = requirementStage(requirement.stages.detail);
-      const testStage = requirementStage(requirement.stages.test);
       const detailCell = node('td');
-      detailCell.append(node('span', 'pill ' + detailStage.cls, detailStage.text), node('div', 'cell-note', '测试阶段：' + testStage.text));
+      detailCell.append(node('span', 'pill ' + detailStage.cls, detailStage.text));
       appendStageDetails(detailCell, requirement.stages.detail);
       row.append(detailCell);
       const riskCell = node('td');
@@ -792,7 +802,6 @@ async function renderVersionDetail(current, view) {
     });
     reqCard.append(buildTable('核心需求进展与风险', ['核心需求', '负责人', '基础流程', '全部内容', '风险'], reqRows, '当前版本没有可识别的核心需求。'));
 
-    const side = node('aside', 'version-detail-side');
     const signalCard = node('div', 'card');
     signalCard.append(node('div', 'section-title', '当前管理信号'));
     const signalList = node('div', 'version-signal-list');
@@ -808,7 +817,7 @@ async function renderVersionDetail(current, view) {
     }
     signalCard.append(signalList);
 
-    const changesCard = node('div', 'card version-changes');
+    changesCard = node('div', 'card version-changes');
     changesCard.append(node('div', 'section-title', '最近变化'), node('div', 'note', '只记录当前可核对的同步与计算事实'));
     const timeline = node('div', 'version-timeline');
     const changes = [
@@ -822,29 +831,41 @@ async function renderVersionDetail(current, view) {
       timeline.append(item);
     }
     changesCard.append(timeline);
-    side.append(signalCard, changesCard);
-    detailLayout.append(reqCard, side);
-    detailPane.append(detailLayout);
+    detailLayout.append(reqCard, signalCard);
   }
 
-  const taskCard = node('div', 'card');
+  const taskCard = node('details', 'card version-tasks');
+  taskCard.open = state.expandedTasks.has(version.id) || Boolean(current.taskId) || current.offset > 0;
+  taskCard.addEventListener('toggle', () => {
+    if (!taskCard.isConnected) return;
+    if (taskCard.open) state.expandedTasks.add(version.id);
+    else state.expandedTasks.delete(version.id);
+  });
+  const taskSummary = node('summary', 'task-summary');
+  taskSummary.append(node('span', 'section-title', '任务详情'), node('span', 'note', '点击展开 / 收起'));
+  taskCard.append(taskSummary);
+  const taskBody = node('div', 'task-body');
   const taskHead = node('div', 'section-head');
   const taskTitles = node('div');
-  taskTitles.append(node('div', 'section-title', '任务快照与下钻'), node('div', 'note', '点击任务查看来源事实、计算问题与来源历史；筛选仅作用于当前页'));
+  taskTitles.append(node('div', 'note', '点击任务查看来源事实、计算问题与来源历史；筛选仅作用于当前页'));
   const taskActions = node('div', 'section-actions');
   taskActions.append(button('刷新本页', async () => {
     clearVersionCaches(version.id);
     await route();
   }));
   taskHead.append(taskTitles, taskActions);
-  taskCard.append(taskHead);
+  taskBody.append(taskHead);
+  taskCard.append(taskBody);
+  detailLayout.append(taskCard);
+  if (changesCard) detailLayout.append(changesCard);
+  detailPane.append(detailLayout);
 
   if (!tasks) {
-    taskCard.append(errorCard('任务快照读取失败：' + tasksResult.reason.message, async () => {
+    taskSummary.append(node('span', 'pill red', '读取失败'));
+    taskBody.append(errorCard('任务详情读取失败：' + tasksResult.reason.message, async () => {
       state.tasks.delete(version.id + ':' + current.offset);
       await route();
     }));
-    detailPane.append(taskCard);
     workspace.append(rail, detailPane);
     wrap.append(workspace);
     view.replaceChildren(wrap);
@@ -856,8 +877,7 @@ async function renderVersionDetail(current, view) {
   taskList.append(renderTaskList(version, tasks, current));
   layout.append(taskList);
   if (current.taskId) layout.append(renderTaskPanel(version, tasks, management, current));
-  taskCard.append(layout);
-  detailPane.append(taskCard);
+  taskBody.append(layout);
   workspace.append(rail, detailPane);
   wrap.append(workspace);
   view.replaceChildren(wrap);
@@ -918,22 +938,21 @@ function renderTaskList(version, tasks, current) {
   const countLine = node('p', 'count-line');
   const tableRows = tasks.items.map(item => {
     const row = node('tr');
-    row.dataset.search = (item.visibleKey + ' ' + item.title).toLowerCase();
+    row.dataset.search = (formatTaskNumber(item.visibleKey, version.uniqueIdPrefix) + ' ' + item.title).toLowerCase();
     row.dataset.type = item.typeName ?? '';
     row.dataset.fn = item.functionName || (item.functionResolution === 'missing' ? '未填写' : '职能待配置');
     row.dataset.issues = (item.structureIssues?.length ? '1' : '0');
     row.tabIndex = 0;
 
-    const keyCell = node('td');
-    keyCell.append(link(item.visibleKey || '无编号', taskHash(version.id, current.offset, item.sourceTaskId), 'version-name'));
+    const keyCell = node('td', 'task-number');
+    keyCell.append(link(formatTaskNumber(item.visibleKey, version.uniqueIdPrefix), taskHash(version.id, current.offset, item.sourceTaskId), 'version-name'));
     keyCell.append(node('div', 'cell-note', item.category ?? '分类未填写'));
     const titleCell = node('td', 'wrap');
     titleCell.append(node('div', null, item.title || '未填写标题'));
-    titleCell.append(node('div', 'cell-note', item.sourceTaskId));
     const typeCell = node('td');
     typeCell.append(node('div', null, item.typeName ?? '未知类型'), node('div', 'cell-note', item.functionName || (item.functionResolution === 'confirmed' ? '' : '职能待配置')));
-    const parentCell = node('td');
-    parentCell.append(node('div', null, item.parentVisibleKey || (item.parentSourceTaskId ? '父任务未纳入' : '无')));
+    const parentCell = node('td', 'task-number');
+    parentCell.append(node('div', null, item.parentVisibleKey ? formatTaskNumber(item.parentVisibleKey, version.uniqueIdPrefix) : (item.parentSourceTaskId ? '父任务未纳入' : '无')));
     const statusCell = node('td');
     statusCell.append(node('div', null, item.rawStatus ?? '未知'), node('div', 'cell-note', PRESENCE_NAMES[item.sourcePresence] ?? '来源状态待核对'));
     const issueCell = node('td', 'wrap');
@@ -975,7 +994,7 @@ function renderTaskList(version, tasks, current) {
   functionSelect.addEventListener('change', () => { filters.fn = functionSelect.value; apply(); });
   issues.addEventListener('change', () => { filters.issues = issues.checked; apply(); });
 
-  const table = buildTable('任务快照', ['编号', '标题', '类型与职能', '父任务', '原始状态与来源', '结构检查', '操作'], tableRows, '当前页没有任务。');
+  const table = buildTable('任务详情列表', ['编号', '标题', '类型与职能', '父任务编号', '原始状态与来源', '结构检查', '操作'], tableRows, '当前页没有任务。');
   wrap.append(toolbar, countLine, table);
 
   const pagination = node('div', 'pagination');
@@ -1012,7 +1031,7 @@ function renderTaskPanel(version, tasks, management, current) {
   const head = node('div', 'panel-head');
   const titleBox = node('div');
   titleBox.append(node('h2', 'panel-title', task?.title || fact?.title || '未命名任务'));
-  titleBox.append(node('div', 'note', (task?.visibleKey || fact?.key || '无编号') + ' · ' + (task?.typeName || '计算事实')));
+  titleBox.append(node('div', 'note task-number', formatTaskNumber(task?.visibleKey || fact?.key, version.uniqueIdPrefix) + ' · ' + (task?.typeName || '计算事实')));
   head.append(titleBox, close);
   panel.append(head);
 
@@ -1031,7 +1050,9 @@ function renderTaskPanel(version, tasks, management, current) {
   addFact('职能', (task?.functionName || fact?.functionName) || (task?.functionResolution === 'missing' ? '未填写' : '待配置'));
   addFact('来源可用性', task ? (PRESENCE_NAMES[task.sourcePresence] ?? '待核对') : '计算事实未提供');
   addFact('最近同步', task ? formatDate(task.lastSyncedAt) : '计算事实未提供');
-  addFact('父任务', task ? (task.parentVisibleKey || (task.parentSourceTaskId ? '父任务未纳入' : '无')) : '计算事实未提供');
+  const parentSourceTaskId = task?.parentSourceTaskId ?? fact?.parentSourceTaskId;
+  const parentKey = task?.parentVisibleKey || management?.items.find(item => item.sourceTaskId === parentSourceTaskId)?.key;
+  addFact('父任务编号', parentKey ? formatTaskNumber(parentKey, version.uniqueIdPrefix) : parentSourceTaskId ? '父任务未纳入' : '无');
   panel.append(facts);
 
   const issues = [...new Set([...(task?.structureIssues ?? []).map(code => ISSUE_NAMES[code] ?? code), ...(fact?.issues ?? [])])];
@@ -1160,7 +1181,7 @@ async function renderRequirements(current, view) {
 
     const overview = node('section', 'card requirement-overview');
     const overviewMain = node('div', 'requirement-overview-main');
-    overviewMain.append(node('div', 'note', '核心需求 · ' + (root?.key || requirement.id)), node('h1', 'requirement-title', requirement.title || '未命名需求'));
+    overviewMain.append(node('div', 'note task-number', '核心需求 · ' + formatTaskNumber(root?.key, version.uniqueIdPrefix)), node('h1', 'requirement-title', requirement.title || '未命名需求'));
     overviewMain.append(node('div', 'requirement-meta', '需求负责人：' + (root?.executorName || '身份待核对') + ' · 版本：' + version.displayName + ' · 预计完成：' + formatDay(plannedEnd)));
     const tags = node('div', 'requirement-tags');
     const foundation = requirementStage(requirement.stages.foundation);
@@ -1256,7 +1277,7 @@ async function renderRequirements(current, view) {
   const rows = management.requirements.map(requirement => {
     const row = node('tr');
     const name = node('td');
-    name.append(link(requirement.title || '未命名需求', requirementsHash(version.id, requirement.id), 'version-name'), node('div', 'cell-note', requirement.id));
+    name.append(link(requirement.title || '未命名需求', requirementsHash(version.id, requirement.id), 'version-name'), node('div', 'cell-note task-number', formatTaskNumber(management.items.find(item => item.id === requirement.id)?.key, version.uniqueIdPrefix)));
     row.append(name);
     for (const key of ['foundation', 'detail', 'test']) {
       const state = requirementStage(requirement.stages[key]);
