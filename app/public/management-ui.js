@@ -5,7 +5,7 @@ const markerLabels={development_start:'开发开始',development_end:'开发结�
 function node(tag,text){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;}
 function option(select,value,label){const el=node('option',label);el.value=value;select.append(el);}
 function table(heads,rows){const wrap=node('div');wrap.className='table-wrap';wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label',heads[0]+'表格');const table=node('table'),head=node('thead'),body=node('tbody'),tr=node('tr');for(const h of heads)tr.append(node('th',h));head.append(tr);for(const cells of rows){const row=node('tr');for(const cell of cells)row.append(node('td',cell));body.append(row);}table.append(head,body);wrap.append(table);return wrap;}
-export async function setupManagement(actor,api,root=document){
+export async function setupManagement(actor,api,root=document,{onChange=()=>{},onSaved=()=>{}}={}){
   const $=id=>root.id===id?root:root.querySelector('#'+id);
   const editable=['admin','owner'].includes(actor.role);let data,initialRules,pending,projectId,draft=new Map();
   const tell=text=>{$('mg-feedback').textContent=text;};
@@ -45,6 +45,7 @@ export async function setupManagement(actor,api,root=document){
       };
     }
     updateFunctionChoices();
+    onChange({data,rules:initialRules,scope,key});
   }
   const mapFor=id=>data.mappings.find(m=>m.source_project_id===$('mg-project').value&&m.status_id===id);
   function workflows(){const project=data.projects.find(p=>p.id===$('mg-project').value);$('mg-workflow').replaceChildren();option($('mg-workflow'),'__used__','当前任务使用的状态');option($('mg-workflow'),'','全部工作流');const flows=new Map((project?.statuses??[]).map(s=>[s.workflowId,s.workflowName]));for(const [id,name] of flows){const repeated=name&&[...flows.values()].filter(n=>n===name).length>1;option($('mg-workflow'),id,name?(repeated?name+'（'+id+'）':name):'名称未获取（'+id+'）');$('mg-workflow').lastElementChild.title='工作流 ID：'+id;}renderMappings();}
@@ -62,11 +63,12 @@ export async function setupManagement(actor,api,root=document){
   form('mg-mapping-form',async()=>{const values=[...draft.values()].filter(v=>{const old=mapFor(v.statusId);return v.semantic!==(old?.semantic??null)||JSON.stringify(v.markers)!==JSON.stringify(old?.markers??[]);});if(!values.length)throw new Error('没有修改映射。');await preview({kind:'mapping',projectId:$('mg-project').value,values,reason:$('mg-mapping-reason').value});});
   form('mg-baseline-form',()=>preview({kind:'baseline',scopeKey:$('mg-version').value,reason:$('mg-baseline-reason').value}));
   form('mg-exemption-form',()=>preview({kind:'exemption',requirementId:$('mg-exemption-requirement').value,functionName:$('mg-exemption-function').value,notApplicable:$('mg-exemption-value').checked,reason:$('mg-exemption-reason').value}));
-  $('mg-save').onclick=()=>run(async()=>{if(!pending)return;$('mg-save').disabled=true;try{const result=await api('/api/management/save','POST',pending);pending=null;$('mg-review').close();tell('保存成功。'+(result.mappingRecovery==='pending'?'映射待验证恢复；请重新同步来源后点击验证映射恢复。':'当前阶段结果已按生效配置重新计算。'));try{await refresh();}catch{tell('配置已保存，展示刷新失败；请点击刷新配置与计算，无需重复保存。');}}finally{$('mg-save').disabled=false;}});
+  $('mg-save').onclick=()=>run(async()=>{if(!pending)return;$('mg-save').disabled=true;try{const result=await api('/api/management/save','POST',pending);pending=null;$('mg-review').close();onSaved();tell('保存成功。'+(result.mappingRecovery==='pending'?'映射待验证恢复；请重新同步来源后点击验证映射恢复。':'当前阶段结果已按生效配置重新计算。'));try{await refresh();}catch{tell('配置已保存，展示刷新失败；请点击刷新配置与计算，无需重复保存。');}}finally{$('mg-save').disabled=false;}});
   $('mg-cancel').onclick=()=>{pending=null;$('mg-review').close();tell('已取消，未保存配置。');};$('mg-review').oncancel=()=>{pending=null;tell('已取消，未保存配置。');};
   $('mg-refresh').onclick=()=>run(async()=>{if(draft.size&&!window.confirm('刷新会放弃尚未保存的状态映射修改，是否继续？'))return;await refresh();tell('配置与计算已刷新。');});
   $('mg-version').onchange=()=>run(async()=>{choices();renderRules();await results();});$('mg-scope').onchange=renderRules;$('mg-requirement').onchange=renderRules;$('mg-workflow').onchange=renderMappings;
   $('mg-project').onchange=()=>{if(draft.size&&!window.confirm('切换项目会放弃尚未保存的映射修改，是否继续？')){$('mg-project').value=projectId;return;}projectId=$('mg-project').value;draft.clear();workflows();};
   $('mg-verify').onclick=()=>run(async()=>{const reason=window.prompt('请填写本次映射恢复验证的原因。');if(!reason?.trim())return;const result=await api('/api/management/verify','POST',{projectId:$('mg-project').value,reason});tell(result.verified?'映射恢复验证通过，审计已记录。':!result.reread?'仍待验证：请先重新同步来源。':'仍待验证：有 '+result.blockedTaskCount+' 张工单存在未映射或来源、结构问题。');await refresh();});
   await refresh();$('management-rules').hidden=false;if(!editable){for(const form of $('management-rules').querySelectorAll('form')){for(const control of form.querySelectorAll('input,select,button'))if(!['mg-scope','mg-requirement'].includes(control.id))control.disabled=true;}for(const button of $('management-rules').querySelectorAll('button[type=submit],#mg-verify'))button.hidden=true;}
+  return {refresh,discardMapping(){draft.clear();renderMappings();}};
 }

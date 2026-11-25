@@ -180,3 +180,22 @@ test('requirement calendar uses Beijing days and respects configured holidays an
   assert.equal(requirementCalendar('2026-11-20T00:00:00Z', '2026-11-20T01:00:00Z').length, 1);
   for (const pair of [[null, null], ['bad', 'bad'], ['2026-11-23', '2026-11-20'], ['2000-01-01', '2026-01-01']]) assert.deepEqual(requirementCalendar(...pair), []);
 });
+
+test('configuration and acceptance share one management form template and keep legacy entry working', async t => {
+  const config = { origin: 'http://127.0.0.1:0', loginEnabled: false };
+  const server = createApplication({ query() { assert.fail('Static form must not read data'); } }, config);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  config.origin = 'http://127.0.0.1:' + server.address().port;
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const shared = await fetch(config.origin + '/management-forms.html');
+  assert.equal(shared.status, 200);
+  const template = await shared.text();
+  for (const endpoint of ['/acceptance', '/acceptance.html']) {
+    const response = await fetch(config.origin + endpoint);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.ok(html.includes(template.trim()));
+    assert.equal((html.match(/id="management-rules"/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /<!-- management-forms -->/);
+  }
+});

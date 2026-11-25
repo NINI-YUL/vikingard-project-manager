@@ -73,6 +73,7 @@ const tasks = Array.from({ length: 101 }, (_, index) => ({
 }));
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 let server, browser;
+let configRules = [];
 
 (async () => {
   try {
@@ -95,10 +96,11 @@ let server, browser;
       let data;
       if (url.pathname === '/api/me') data = { id: 'test', displayName: '测试用户', role: 'viewer' };
       else if (url.pathname === '/api/versions') data = versions;
+      else if (url.pathname === '/api/status') data = { pollingEnabled: false };
       else if (url.pathname === '/api/management') data = {
         revision: 1, functions: ['UI界面', 'UI图标', '客户端'], semantics: { not_started: '未开始', developing: '开发中' },
         markers: ['development_start'], defaults: { foundation: ['UI界面', '客户端'], detail: ['UI图标'], schedules: [{ day: 2, time: '10:00' }], concurrency: 3 },
-        rules: [], calendar: {}, mappings: [], projects: [{ id: 'project', name: '测试项目', statuses: [{ id: 'developing', name: '开发中', workflowId: 'flow', workflowName: '开发流程', usedCount: 1 }] }],
+        rules: configRules, calendar: {}, mappings: [], projects: [{ id: 'project', name: '测试项目', statuses: [{ id: 'developing', name: '开发中', workflowId: 'flow', workflowName: '开发流程', usedCount: 1 }] }],
         versions: versions.map(version => ({ id: version.id, name: version.displayName, lifecycle: 'enrolled' })), requirements: []
       };
       else if (url.pathname.startsWith('/api/management/versions/')) data = management(versionIds.indexOf(url.pathname.split('/').at(-1)));
@@ -371,10 +373,10 @@ let server, browser;
     await wait(600);
     assert.ok(delayedRequests >= 2);
     assert.equal(await page.locator('.config-layout').count(), 1, 'Late action response must not overwrite config route');
-    await page.getByRole('button', { name: '状态语义', exact: true }).click();
-    await page.getByRole('region', { name: '状态映射', exact: true }).waitFor();
-    assert.equal(await page.getByLabel('开发中的管理语义').isDisabled(), true);
-    await page.getByRole('button', { name: '人员与通知', exact: true }).click();
+    await page.locator('.config-v2-nav').filter({ hasText: '状态语义' }).click();
+    await page.getByRole('region', { name: '状态语义映射', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '编辑映射', exact: true }).isVisible(), false);
+    await page.locator('.config-v2-nav').filter({ hasText: '人员与通知' }).click();
     assert.match(await page.locator('.config-content').innerText(), /当前身份：测试用户/);
 
     await page.route('**/api/management/versions/*', async route => {
@@ -405,7 +407,27 @@ let server, browser;
     await page.locator('#login-view').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#app').isVisible(), false);
     await page.route('**/api/me', route => route.fulfill({ json: { id: 'owner', displayName: '测试所有者', role: 'owner', csrf: 'fake-csrf' } }));
-    await page.route('**/api/access', route => route.fulfill({ json: [{ id: 'owner', displayName: '测试所有者', role: 'owner', active: true, mappingEnabled: true, confirmed: true }] }));
+    const peopleRecords = [{ id: 'owner', displayName: '测试所有者', role: 'owner', active: true, mappingEnabled: true, confirmed: true }, { id: 'person-a', displayName: '测试查看者', role: 'viewer', active: true, mappingEnabled: true, confirmed: true }];
+    const permissionWrites = [], identityWrites = [], identityStateWrites = [];
+    await page.route('**/api/access', route => route.fulfill({ json: peopleRecords }));
+    await page.route('**/api/access/*', async route => {
+      assert.equal(route.request().method(), 'PATCH');
+      assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
+      const input = route.request().postDataJSON(); permissionWrites.push(input);
+      peopleRecords[1].role = input.role; await route.fulfill({ json: peopleRecords[1] });
+    });
+    await page.route('**/api/identities/*', async route => {
+      assert.equal(route.request().method(), 'PATCH');
+      assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
+      const input = route.request().postDataJSON(); identityStateWrites.push(input);
+      Object.assign(peopleRecords[1], { active: input.active, mappingEnabled: input.mappingEnabled });
+      await route.fulfill({ json: peopleRecords[1] });
+    });
+    await page.route('**/api/identities', async route => {
+      assert.equal(route.request().method(), 'POST');
+      assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
+      identityWrites.push(route.request().postDataJSON()); await route.fulfill({ json: { id: 'new-fake-person', role: 'none' } });
+    });
     await page.route('**/api/audit', route => route.fulfill({ json: [{ id: '1', action: 'management.calendar', reason: '隔离验证', occurred_at: '2026-11-23T02:00:00Z', before_value: null, after_value: { working: true } }] }));
     const syncCalls = [];
     await page.route('**/api/versions/*/sync', async route => {
@@ -426,8 +448,11 @@ let server, browser;
       assert.equal(route.request().method(), 'POST');
       assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
       const input = route.request().postDataJSON();
-      assert.equal(input.kind, 'calendar');
-      await route.fulfill({ json: { revision: 1, previewToken: 'fake-preview', affected: { versionCount: 2, taskCount: 101 }, before: {}, after: input.values } });
+      assert.ok(['calendar', 'rules'].includes(input.kind));
+      const before = { foundation: { value: ['UI界面', '客户端'], source: 'system' }, detail: { value: ['UI图标'], source: 'system' }, schedules: { value: [{ day: 2, time: '10:00' }], source: 'system' }, concurrency: { value: 3, source: 'system' } };
+      const after = { ...before };
+      if (input.kind === 'rules') for (const [key, value] of Object.entries(input.values)) after[key] = { value, source: input.scope };
+      await route.fulfill({ json: { revision: 1, previewToken: 'fake-preview', affected: { versionCount: 2, taskCount: 101 }, before: input.kind === 'rules' ? before : {}, after: input.kind === 'rules' ? after : input.values } });
     });
     await page.route('**/api/management/save', async route => {
       assert.equal(route.request().method(), 'POST');
@@ -437,6 +462,7 @@ let server, browser;
       assert.equal(input.confirmed, true);
       assert.equal(input.expectedRevision, 1);
       saved++;
+      if (input.kind === 'rules') configRules = [{ scope: input.scope, scope_key: input.scopeKey, values: input.values }];
       await route.fulfill({ json: { saved: true, revision: 2 } });
     });
     await page.goto(origin + '/?scenario=config-owner#/action');
@@ -452,7 +478,8 @@ let server, browser;
     assert.match(await page.locator('#message').innerText(), /同步 6 张工单/);
     await page.getByRole('link', { name: '配置库', exact: true }).click();
     await page.locator('.config-layout').waitFor();
-    await page.getByText('公司工作日历', { exact: true }).click();
+    await page.getByRole('button', { name: '工作日历', exact: true }).click();
+    await page.getByRole('button', { name: '编辑日期', exact: true }).click();
     await page.locator('#mg-calendar-day').fill('2026-11-28');
     await page.locator('#mg-calendar-reason').fill('隔离浏览器验证');
     await page.locator('#mg-calendar-form button[type=submit]').click();
@@ -461,13 +488,139 @@ let server, browser;
     await page.waitForFunction(() => document.querySelector('#mg-feedback').textContent.includes('保存成功'));
     assert.equal(saved, 1);
     await page.screenshot({ path: path.join(output, 'p09-config.png'), fullPage: true });
+    await page.getByRole('button', { name: '规则设置', exact: true }).click();
+    assert.equal(await page.locator('#mg-rules-form').isVisible(), false);
+    assert.match(await page.locator('.config-rule-summary').innerText(), /进度判断配置/);
+    await page.getByRole('button', { name: '编辑配置', exact: true }).click();
+    await page.locator('[data-rule-field="foundation"]').getByLabel('客户端', { exact: true }).uncheck();
+    await page.getByRole('dialog', { name: '编辑配置', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();
+    assert.equal(saved, 1, 'Closing the rule editor must not save');
+    await page.getByRole('button', { name: '编辑配置', exact: true }).click();
+    assert.equal(await page.locator('[data-rule-field="foundation"]').getByLabel('客户端', { exact: true }).isChecked(), true);
+    await page.locator('[data-rule-field="foundation"]').getByLabel('客户端', { exact: true }).uncheck();
+    await page.locator('#mg-rule-reason').fill('隔离规则修改');
+    await page.locator('#mg-rules-form button[type=submit]').click();
+    await page.locator('#mg-review[open]').waitFor();
+    await page.locator('#mg-save').click();
+    await page.waitForFunction(() => !document.querySelector('#mg-review').open && document.querySelector('#mg-feedback').textContent.includes('保存成功'));
+    assert.equal(saved, 2);
+    assert.equal(await page.getByRole('dialog', { name: '编辑配置', exact: true }).isVisible(), false);
+    await page.locator('#mg-scope').selectOption('version');
+    assert.match(await page.locator('.config-rule-summary').innerText(), /继承系统默认/);
+    await page.locator('#mg-scope').selectOption('system');
+    const enrollCalls = [];
+    await page.route('**/api/source-candidates', route => route.fulfill({ json: [
+      { projectId: 'project-a', versionId: 'candidate-a', projectName: '测试项目', versionName: '候选甲' },
+      { projectId: 'project-b', versionId: 'candidate-b', projectName: '测试项目', versionName: '候选乙' }
+    ] }));
+    await page.route('**/api/version-people', route => route.fulfill({ json: [{ id: 'owner-a', displayName: '负责人甲' }, { id: 'owner-b', displayName: '负责人乙' }] }));
+    await page.route('**/api/versions', async route => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
+      enrollCalls.push(route.request().postDataJSON()); await route.fulfill({ json: { id: versionIds[1] } });
+    });
+    await page.getByRole('button', { name: '版本范围', exact: true }).click();
+    await page.getByRole('button', { name: '选择版本', exact: true }).click();
+    const enrollment = page.getByRole('dialog', { name: '选择版本', exact: true });
+    await enrollment.getByLabel('Teambition 版本', { exact: true }).waitFor();
+    assert.equal(await enrollment.getByLabel('Teambition 版本', { exact: true }).inputValue(), '');
+    assert.equal(await enrollment.getByLabel('版本负责人', { exact: true }).inputValue(), '');
+    await enrollment.getByRole('button', { name: '取消', exact: true }).click();
+    assert.equal(enrollCalls.length, 0);
+    await page.getByRole('button', { name: '选择版本', exact: true }).click();
+    await enrollment.getByLabel('Teambition 版本', { exact: true }).selectOption('candidate-b');
+    await enrollment.getByLabel('版本负责人', { exact: true }).selectOption('owner-b');
+    await enrollment.getByLabel('核对依据与纳入原因', { exact: true }).fill('隔离验证明确选择');
+    await enrollment.getByRole('button', { name: '核对来源并确认', exact: true }).click();
+    await enrollment.waitFor({ state: 'hidden' });
+    assert.deepEqual(enrollCalls, [{ projectId: 'project-b', versionId: 'candidate-b', ownerId: 'owner-b', reason: '隔离验证明确选择' }]);
+    const useSpace = async value => {
+      if (await page.locator('.config-v2-mobile').isVisible()) await page.locator('.config-v2-mobile').selectOption(value);
+      else await page.locator('.config-v2-nav[data-workspace="' + value + '"]').click();
+    };
+    for (const width of [1440, 768, 375]) {
+      await page.setViewportSize({ width, height: 1000 });
+      for (const [workspace, labels] of [['version', ['版本范围', '规则设置', '工作日历']], ['status', ['状态映射', '影响与恢复']], ['people', ['人员与权限', '通知对象']]]) {
+        await useSpace(workspace);
+        for (const label of labels) {
+          await page.getByRole('button', { name: label, exact: true }).click();
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, width + ' ' + label);
+          await page.screenshot({ path: path.join(output, 'p09-config-' + workspace + '-' + labels.indexOf(label) + '-' + width + '.png'), fullPage: true });
+        }
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await useSpace('version');
+    await page.getByRole('button', { name: '规则设置', exact: true }).click();
+    await page.reload();
+    await page.locator('.config-layout').waitFor();
+    assert.equal(await page.getByRole('button', { name: '规则设置', exact: true }).getAttribute('aria-current'), 'page');
+    const acceptanceResponse = await page.request.get(origin + '/acceptance');
+    assert.match(await acceptanceResponse.text(), /id="management-rules"/);
+
+    await useSpace('people');
+    const personRow = page.getByRole('region', { name: '人员与权限', exact: true }).locator('tbody tr').filter({ hasText: '测试查看者' });
+    await personRow.getByRole('button', { name: '编辑权限', exact: true }).click();
+    const personEditor = page.getByRole('dialog', { name: '编辑人员配置', exact: true });
+    await personEditor.getByLabel('系统权限', { exact: true }).selectOption('admin');
+    await personEditor.getByRole('button', { name: '取消', exact: true }).click();
+    assert.equal(permissionWrites.length, 0);
+    await personRow.getByRole('button', { name: '编辑权限', exact: true }).click();
+    assert.equal(await personEditor.getByLabel('系统权限', { exact: true }).inputValue(), 'viewer');
+    await personEditor.getByLabel('系统权限', { exact: true }).selectOption('admin');
+    await personEditor.getByLabel('变更依据与原因', { exact: true }).fill('隔离权限修改');
+    await personEditor.getByRole('button', { name: '确认保存', exact: true }).click();
+    await personEditor.waitFor({ state: 'hidden' });
+    assert.deepEqual(permissionWrites, [{ role: 'admin', reason: '隔离权限修改' }]);
+    await personRow.getByRole('button', { name: '编辑身份', exact: true }).click();
+    await personEditor.getByLabel('启用人员', { exact: true }).uncheck();
+    await personEditor.getByLabel('变更依据与原因', { exact: true }).fill('隔离身份停用');
+    await personEditor.getByRole('button', { name: '确认保存', exact: true }).click();
+    await personEditor.waitFor({ state: 'hidden' });
+    assert.deepEqual(identityStateWrites, [{ active: false, mappingEnabled: true, reason: '隔离身份停用' }]);
+    await page.getByRole('button', { name: '登记已核实身份', exact: true }).click();
+    await personEditor.getByLabel('显示姓名', { exact: true }).fill('隔离登记人员');
+    await personEditor.getByLabel('已核实的钉钉 Union ID', { exact: true }).fill('fake-union-id');
+    await personEditor.getByLabel('已核对当前企业及该人员的可信身份', { exact: true }).check();
+    await personEditor.getByLabel('变更依据与原因', { exact: true }).fill('隔离身份核对');
+    await personEditor.getByRole('button', { name: '确认保存', exact: true }).click();
+    await personEditor.waitFor({ state: 'hidden' });
+    assert.deepEqual(identityWrites, [{ displayName: '隔离登记人员', unionId: 'fake-union-id', reason: '隔离身份核对', confirmed: true }]);
+    await useSpace('version');
+    await page.getByRole('button', { name: '规则设置', exact: true }).click();
+    if (process.env.VIKINGPM_V2_ORIGIN) {
+      const reference = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+      await reference.goto(process.env.VIKINGPM_V2_ORIGIN + '?page=config');
+      await reference.locator('.cfg-shell').waitFor();
+      const pairs = [
+        ['.config-v2-shell', '.cfg-shell', ['gridTemplateColumns', 'backgroundColor']],
+        ['.config-v2-rail', '.cfg-rail', ['padding', 'backgroundColor']],
+        ['.config-v2-top', '.cfg-top', ['padding', 'backgroundColor']],
+        ['.config-v2-top h1', '.cfg-top h1', ['fontSize', 'fontWeight', 'lineHeight', 'color']],
+        ['.config-v2-content', '.cfg-content', ['padding']],
+        ['.config-v2-subtabs', '.cfg-tabs', ['gap', 'marginBottom']],
+        ['.config-v2-subtab.active', '.cfg-tab.active', ['fontSize', 'fontWeight', 'color']],
+        ['.config-v2-section', '.cfg-section', ['borderRadius', 'borderColor', 'boxShadow']]
+      ];
+      const comparisons = [];
+      for (const [actualSelector, expectedSelector, properties] of pairs) {
+        const readStyles = (element, keys) => Object.fromEntries(keys.map(key => [key, getComputedStyle(element)[key]]));
+        const actual = await page.locator(actualSelector).filter({ visible: true }).first().evaluate(readStyles, properties);
+        const expected = await reference.locator(expectedSelector).filter({ visible: true }).first().evaluate(readStyles, properties);
+        comparisons.push({ actualSelector, expectedSelector, actual, expected });
+        for (const key of properties) if (key !== 'gridTemplateColumns') assert.equal(actual[key], expected[key], actualSelector + ' ' + key);
+        if (properties.includes('gridTemplateColumns')) assert.equal(actual.gridTemplateColumns.split(' ')[0], expected.gridTemplateColumns.split(' ')[0]);
+      }
+      fs.writeFileSync(path.join(output, 'p09-config-v2-style-comparison.json'), JSON.stringify(comparisons, null, 2));
+      await reference.close();
+    }
     const beforeActionReads = ownerReads;
     await page.getByRole('link', { name: '行动中心', exact: true }).click();
     await page.locator('.action-grid').waitFor();
     assert.equal(ownerReads, beforeActionReads + 2, 'Saved configuration invalidates computed management caches');
     await page.getByRole('link', { name: '配置库', exact: true }).click();
     await page.locator('.config-layout').waitFor();
-    await page.getByRole('button', { name: '人员与通知', exact: true }).click();
+    await page.locator('.config-v2-nav').filter({ hasText: '人员与通知' }).click();
     await page.getByRole('region', { name: '人员与权限', exact: true }).waitFor();
     await page.getByRole('link', { name: /^异常与审计/ }).click();
     await page.getByRole('region', { name: '最近系统审计', exact: true }).waitFor();

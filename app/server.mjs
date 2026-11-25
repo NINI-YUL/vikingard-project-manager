@@ -9,6 +9,7 @@ import { beginLogin, completeLogin } from './dingtalk.mjs';
 import { enrollVersion, syncVersion } from './version-source.mjs';
 
 const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/acceptance', ['text/html; charset=utf-8','acceptance.html']],['/acceptance.html', ['text/html; charset=utf-8','acceptance.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/shell.js',['text/javascript; charset=utf-8','shell.js']],['/shell.css',['text/css; charset=utf-8','shell.css']],['/function-catalog.mjs',['text/javascript; charset=utf-8','../function-catalog.mjs']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
+assets.set('/management-forms.html', ['text/html; charset=utf-8', 'management-forms.html']);
 for (const weight of [400, 500, 600, 700]) {
   assets.set(`/assets/jakarta-${weight}.ttf`, ['font/ttf', `assets/jakarta-${weight}.ttf`]);
 }
@@ -41,7 +42,10 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
       if (req.headers.host !== new URL(config.origin).host) throw new Denied(400,'访问地址不匹配');
       const url = new URL(req.url,config.origin), path = url.pathname, jar = cookies(req);
       if (req.method === 'GET' && assets.has(path)) {
-        const [type,file] = assets.get(path); res.writeHead(200,{'Content-Type':type}); return res.end(readFileSync(new URL('public/'+file,import.meta.url)));
+        const [type,file] = assets.get(path);
+        let content = readFileSync(new URL('public/'+file,import.meta.url));
+        if (file === 'acceptance.html') content = content.toString('utf8').replace('<!-- management-forms -->', readFileSync(new URL('public/management-forms.html',import.meta.url), 'utf8'));
+        res.writeHead(200,{'Content-Type':type}); return res.end(content);
       }
       if (req.method === 'GET' && path === '/healthz') {
         try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P09',loginEnabled:config.loginEnabled}); }

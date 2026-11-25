@@ -456,7 +456,8 @@ async function route() {
   if (!location.hash) history.replaceState(null, '', '#/action');
   document.body.classList.toggle('version-page', ['versions', 'versionDetail'].includes(current.name));
   document.body.classList.toggle('requirement-page', current.name === 'requirements');
-  document.body.classList.toggle('v2-page', ['versions', 'versionDetail', 'requirements'].includes(current.name));
+  document.body.classList.toggle('v2-page', ['versions', 'versionDetail', 'requirements', 'config'].includes(current.name));
+  document.body.classList.toggle('config-page', current.name === 'config');
   setNav(current);
   syncVersionSelect(current);
   syncFunctionFilter(current);
@@ -1525,80 +1526,381 @@ function renderParticipation(view) {
 }
 
 async function renderConfig(view, current) {
-  setTitle('配置库', '版本与规则 · 状态语义 · 人员与通知');
-  const layout = node('div', 'config-layout');
-  const tabs = node('nav', 'config-tabs');
-  tabs.setAttribute('aria-label', '配置分类');
-  const content = node('div', 'config-content');
-  const response = await fetch('/acceptance');
+  setTitle('配置库', '版本范围、三级规则和工作日历');
+  const editable = ['admin', 'owner'].includes(state.actor.role);
+  const params = new URLSearchParams(current.raw.split('?')[1] ?? '');
+  const spaces = {
+    version: { title: '版本与规则', sub: '版本范围、三级规则和工作日历', tabs: [['scope', '版本范围'], ['rules', '规则设置'], ['calendar', '工作日历']] },
+    status: { title: '状态语义', sub: '按 Teambition 项目和工作流维护原始状态映射', tabs: [['mapping', '状态映射'], ['impact', '影响与恢复']] },
+    people: { title: '人员与通知', sub: '人员身份、业务角色、系统权限与通知规则', tabs: [['people', '人员与权限'], ['notice', '通知对象']] }
+  };
+  let space = params.get('section') === 'status' ? 'status' : params.get('section') === 'people' ? 'people' : 'version';
+  let tab = params.get('tab') || spaces[space].tabs[0][0];
+  if (!spaces[space].tabs.some(([key]) => key === tab)) tab = spaces[space].tabs[0][0];
+  let catalog, currentRules, currentScope, currentKey;
+  let management;
+  let calendarMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
+  const response = await fetch('/management-forms.html');
   if (!response.ok) throw new Error('配置表单读取失败，请重试。');
-  // shortcut: reuse the shipped acceptance form; extract a shared template when its structure diverges.
-  const document = new DOMParser().parseFromString(await response.text(), 'text/html');
-  const forms = document.querySelector('#management-rules');
+  const template = new DOMParser().parseFromString(await response.text(), 'text/html');
+  const forms = template.querySelector('#management-rules');
   if (!forms) throw new Error('配置表单不完整，请联系管理员。');
   forms.hidden = false;
-  forms.className = 'card config-forms';
-  forms.querySelector('h2').textContent = '版本与规则';
-  forms.querySelector('h2 + p').textContent = '配置按系统、版本和需求逐层继承。保存前预览影响；状态映射保存后须验证恢复。';
-  forms.querySelector('#mg-results').hidden = true;
-  const detailForms = [...forms.querySelectorAll(':scope > details')];
-  const people = node('section', 'card');
-  people.hidden = true;
-  people.append(node('h2', 'section-title', '人员与权限'),
-    node('p', 'note', '业务角色与系统权限分别维护。仅所有者可调整系统权限；身份登记和停用仍从功能验收操作。'));
-  const roles = node('div');
-  people.append(roles, link('身份与权限维护', '/acceptance', 'button small'));
-  let peopleLoaded = false;
-  async function showPeople() {
-    if (peopleLoaded) return;
-    roles.replaceChildren(loading());
+  forms.className = 'config-forms config-v2-form-host';
+  const control = id => forms.querySelector('#' + id);
+  forms.querySelector('h2').remove();
+  forms.querySelector(':scope > p').remove();
+  control('mg-results').hidden = true;
+  const versionLabel = forms.querySelector('[for="mg-version"]');
+  versionLabel.textContent = '版本';
+  const ruleForm = control('mg-rules-form');
+  const ruleDetails = ruleForm.closest('details');
+  const calendarForm = control('mg-calendar-form');
+  const calendarDetails = calendarForm.closest('details');
+  const mappingForm = control('mg-mapping-form');
+  const mappingDetails = mappingForm.closest('details');
+  const layout = node('div', 'config-layout config-v2-shell');
+  const rail = node('aside', 'config-v2-rail');
+  const main = node('div', 'config-v2-main');
+  const header = node('header', 'config-v2-top');
+  const heading = node('div');
+  const mobile = node('select', 'select config-v2-mobile');
+  mobile.setAttribute('aria-label', '配置工作区');
+  const tabs = node('nav', 'config-v2-subtabs');
+  tabs.setAttribute('aria-label', '工作区页面');
+  const content = node('div', 'config-content config-v2-content');
+  const pages = {};
+  function panel(title, description) {
+    const box = node('section', 'config-v2-section');
+    const head = node('div', 'config-v2-section-head');
+    const text = node('div');
+    text.append(node('h2', 'section-title', title));
+    if (description) text.append(node('p', 'note', description));
+    const body = node('div', 'config-v2-section-body');
+    head.append(text); box.append(head, body);
+    return { box, head, body };
+  }
+  function createEditor(title, form) {
+    const dialog = node('dialog', 'config-v2-dialog');
+    dialog.setAttribute('aria-label', title);
+    const head = node('div', 'config-v2-section-head');
+    head.append(node('h2', 'section-title', title), button('关闭', () => dialog.close(), 'button small'));
+    dialog.append(head, form);
+    forms.append(dialog);
+    return dialog;
+  }
+  const ruleEditor = createEditor('编辑配置', ruleForm);
+  const calendarEditor = createEditor('日期配置', calendarForm);
+  const mappingEditor = createEditor('编辑状态映射', mappingForm);
+  const editors = [ruleEditor, calendarEditor, mappingEditor];
+  ruleDetails.remove();
+  const calendarList = control('mg-calendar-list');
+  calendarDetails.removeChild(calendarList);
+  const calendarNote = calendarDetails.querySelector('p');
+  calendarDetails.removeChild(calendarNote); calendarDetails.remove();
+  const projectLabel = mappingDetails.querySelector('[for="mg-project"]');
+  const workflowLabel = mappingDetails.querySelector('[for="mg-workflow"]');
+  const projectSelect = control('mg-project'), workflowSelect = control('mg-workflow');
+  mappingDetails.removeChild(projectSelect); mappingDetails.removeChild(workflowSelect);
+  mappingDetails.removeChild(projectLabel); mappingDetails.removeChild(workflowLabel); mappingDetails.remove();
+  const versionsPanel = panel('日常管理版本', '仅显示已批准来源；纳入和同步只读取 Teambition，保留当前事实。');
+  pages['version/scope'] = versionsPanel.box;
+  const rulesPage = node('div', 'config-rules-workspace');
+  const objectPanel = panel('配置层级', '选择作用范围，查看配置或在一个窗口内编辑。');
+  const scopeControls = node('div', 'config-rule-controls');
+  for (const [label, select] of [[ruleForm.querySelector('[for="mg-scope"]'), control('mg-scope')], [versionLabel, control('mg-version')], [ruleForm.querySelector('[for="mg-requirement"]'), control('mg-requirement')]]) {
+    const field = node('div', 'field'); field.append(label, select); scopeControls.append(field);
+  }
+  objectPanel.body.append(scopeControls, control('mg-scope-note'));
+  const editRules = button('编辑配置', () => {
+    control('mg-scope').dispatchEvent(new Event('change'));
+    control('mg-rule-reason').value = '';
+    ruleEditor.showModal();
+  }, 'button primary');
+  editRules.hidden = !editable; objectPanel.head.append(editRules);
+  const ruleSummary = node('div', 'config-rule-summary');
+  rulesPage.append(objectPanel.box, ruleSummary);
+  // Keep confirmed baseline and function-exemption operations accessible in this workspace.
+  const extraDetails = [...forms.querySelectorAll(':scope > details')];
+  for (const details of extraDetails) { details.classList.add('config-v2-section', 'config-extra'); rulesPage.append(details); }
+  pages['version/rules'] = rulesPage;
+  const calendarPanel = panel('公司工作日历', '默认北京时间周一至周五；调休和特殊工作时段以已保存配置为准。');
+  const calendarBoard = node('div', 'config-calendar');
+  calendarPanel.body.append(calendarNote, calendarBoard, calendarList);
+  const editCalendar = button('编辑日期', () => openCalendarDate(), 'button primary');
+  editCalendar.hidden = !editable; calendarPanel.head.append(editCalendar);
+  pages['version/calendar'] = calendarPanel.box;
+  const statusPanel = panel('状态语义映射', '保留 Teambition 原始状态，用统一语义驱动完成判断、历时和风险通知。');
+  const statusContext = node('div', 'config-rule-controls');
+  const projectField = node('div', 'field'), workflowField = node('div', 'field');
+  projectField.append(projectLabel, projectSelect); workflowField.append(workflowLabel, workflowSelect);
+  statusContext.append(projectField, workflowField);
+  const statusSummary = node('div'); statusPanel.body.append(statusContext, statusSummary);
+  const editMapping = button('编辑映射', () => { management.discardMapping(); control('mg-mapping-reason').value = ''; mappingEditor.showModal(); }, 'button primary');
+  editMapping.hidden = !editable; statusPanel.head.append(editMapping);
+  pages['status/mapping'] = statusPanel.box;
+  const impactPanel = panel('影响与恢复', '保存映射后仍需重新同步并验证；未恢复前，相关异常继续保留。');
+  const verify = control('mg-verify'); impactPanel.body.append(verify, link('打开异常与审计', '#/anomalies', 'row-link'));
+  const recoverySummary = node('div'); impactPanel.body.prepend(recoverySummary);
+  pages['status/impact'] = impactPanel.box;
+  const peoplePanel = panel('人员与权限', '业务角色与系统权限分别维护；权限和身份状态维护仅对所有者开放。');
+  const peopleBody = node('div'); peoplePanel.body.append(peopleBody, link('身份与权限维护', '/acceptance', 'button small'));
+  pages['people/people'] = peoplePanel.box;
+  const noticePanel = panel('通知节点与接收规则', '只读展示已确认规则；本页操作不会发送消息。');
+  const noticeRows = [['基础流程完成', '核心需求参与者中的测试、运营、策划、PM'], ['细节完整完成', '核心需求参与者中的测试、运营、策划、PM'], ['优化需求完成', '相关策划角色']].map(cells => { const row = node('tr'); for (const cell of cells) row.append(node('td', null, cell)); return row; });
+  noticePanel.body.append(buildTable('通知节点与接收规则', ['通知节点', '接收规则'], noticeRows, ''), node('p', 'note', '实际投递还需满足通知节点触发、需求关系和身份映射已确认。系统权限不增加通知资格；无法投递的人员不会被自动替换。具体接收人应在对应需求范围核对。'));
+  pages['people/notice'] = noticePanel.box;
+  const feedback = control('mg-feedback');
+  const refresh = control('mg-refresh'); refresh.textContent = '刷新配置'; refresh.className = 'button small';
+  header.append(heading, refresh);
+  const brand = node('div', 'config-v2-brand'); brand.append(node('span', 'mark', '配'), node('span', null, '项目配置库'));
+  rail.append(brand, link('返回行动中心', '#/action', 'button small'), node('div', 'config-v2-label', '配置工作区'));
+  for (const [key, info] of Object.entries(spaces)) {
+    const entry = button('', () => selectSpace(key), 'config-v2-nav'); entry.dataset.workspace = key;
+    entry.append(node('b', null, info.title), node('small', null, info.sub)); rail.append(entry);
+    const option = node('option', null, info.title); option.value = key; mobile.append(option);
+  }
+  rail.append(node('p', 'config-v2-rail-note', '异常与审计留在主导航；配置库只处理规则和映射。'));
+  mobile.addEventListener('change', () => selectSpace(mobile.value));
+  content.append(tabs, feedback, forms); forms.append(...Object.values(pages));
+  main.append(header, content); layout.append(rail, main); view.append(layout);
+  function updateLocation() {
+    const query = new URLSearchParams({ section: space, tab });
+    history.replaceState(null, '', '#/config?' + query);
+  }
+  function renderTabs() {
+    tabs.replaceChildren();
+    for (const [key, title] of spaces[space].tabs) {
+      const entry = button(title, () => { tab = key; showPage(); updateLocation(); }, 'config-v2-subtab');
+      entry.classList.toggle('active', tab === key); if (tab === key) entry.setAttribute('aria-current', 'page');
+      tabs.append(entry);
+    }
+  }
+  function showPage() {
+    layout.dataset.workspace = space;
+    for (const [key, page] of Object.entries(pages)) page.hidden = key !== space + '/' + tab;
+    heading.replaceChildren(node('h1', null, spaces[space].title), node('div', 'note', spaces[space].sub), mobile);
+    mobile.value = space;
+    for (const entry of rail.querySelectorAll('[data-workspace]')) {
+      entry.classList.toggle('active', entry.dataset.workspace === space);
+      if (entry.dataset.workspace === space) entry.setAttribute('aria-current', 'page'); else entry.removeAttribute('aria-current');
+    }
+    renderTabs();
+  }
+  function selectSpace(key) { space = key; tab = spaces[key].tabs[0][0]; showPage(); updateLocation(); }
+  const sourceNames = { system: '系统默认', version: '版本覆盖', requirement: '需求级覆盖' };
+  function renderRuleSummary() {
+    if (!catalog || !currentRules) return;
+    const own = catalog.rules.find(rule => rule.scope === currentScope && rule.scope_key === currentKey)?.values ?? {};
+    const missing = currentScope !== 'system' && !currentKey;
+    editRules.disabled = missing;
+    const objectName = currentScope === 'system' ? '系统默认' : currentScope === 'version' ? control('mg-version').selectedOptions[0]?.textContent : control('mg-requirement').selectedOptions[0]?.textContent;
+    objectPanel.head.querySelector('h2').textContent = '当前配置：' + (objectName || '暂无对象');
+    ruleSummary.replaceChildren();
+    if (missing) { ruleSummary.append(emptyCard('暂无可配置对象。版本启用并读取需求后，可在这里配置。')); return; }
+    if (currentScope !== 'system' && !Object.keys(own).length) {
+      const inherit = panel(currentScope === 'version' ? '继承系统默认' : '继承上层配置', '当前对象尚未设置特殊配置。未修改的配置项始终继承上层；点击编辑可从当前生效值开始调整。');
+      ruleSummary.append(inherit.box); return;
+    }
+    const progress = panel('进度判断配置', '先确认基础流程，再累计细节，最后核对全部交付内容。');
+    for (const [key, title, note] of [['foundation', '基础流程阶段', '所选职能工单全部处理完成，即可开始验收测试。'], ['detail', '细节完整阶段', '基础流程 + 以下职能全部处理完成，即开发内网全完成。']]) {
+      const row = node('div', 'config-rule-stage');
+      row.append(node('h3', null, title), node('p', 'note', note), node('span', 'pill blue', sourceNames[currentRules[key].source]));
+      const chips = node('div', 'requirement-tags');
+      for (const value of currentRules[key].value) chips.append(node('span', 'pill', value));
+      row.append(chips); progress.body.append(row);
+    }
+    const fixed = node('div', 'config-rule-stage');
+    fixed.append(node('h3', null, '测试阶段'), node('p', 'note', '固定检查全部应处理后代工单；非交付终态不阻塞完成。数据缺失或状态未知不算完成，阶段完成不代表上线。'));
+    progress.body.append(fixed);
+    const follow = panel('进度采集与风险配置', '开发关注阈值只提示复核，不表示超载或绩效。');
+    follow.body.append(node('h3', null, '进度采集'), node('span', 'pill blue', sourceNames[currentRules.schedules.source]), node('p', null, currentRules.schedules.value.map(point => '周' + ['','一','二','三','四','五','六','日'][point.day] + ' ' + point.time).join('、')), node('p', 'note', '北京时间 · 仅在公司工作日执行；休息日跳过，不自动补发。'), node('h3', null, '开发关注阈值'), node('p', null, '同一执行者跨全部活跃版本的核心专业子单计划区间重叠达到 ' + currentRules.concurrency.value + ' 张时提示关注。版本与需求不能单独覆盖。'));
+    ruleSummary.append(progress.box, follow.box);
+  }
+  function renderStatusSummary() {
+    if (!catalog) return;
+    const project = catalog.projects.find(item => item.id === projectSelect.value) ?? catalog.projects[0];
+    const statuses = (project?.statuses ?? []).filter(item => workflowSelect.value === '__used__' ? item.usedCount : !workflowSelect.value || item.workflowId === workflowSelect.value);
+    let mapped = 0, verified = 0;
+    const rows = statuses.map(status => {
+      const mapping = catalog.mappings.find(item => item.source_project_id === project?.id && item.status_id === status.id);
+      if (mapping?.semantic) mapped++; if (mapping?.recovery === 'verified') verified++;
+      const row = node('tr');
+      row.append(node('td', null, status.name + ' · ' + (status.workflowName || '工作流名称未获取')), node('td', 'task-number', status.id), node('td', null, catalog.semantics[mapping?.semantic] || '未映射'), node('td', null, mapping?.markers?.map(value => ({ development_start: '开发开始', development_end: '开发结束', test_start: '测试开始', test_end: '测试结束' })[value]).join('、') || '无计时节点'), node('td', null, mapping?.recovery === 'verified' ? '已验证恢复' : mapping?.semantic ? '待验证恢复' : '待映射'));
+      return row;
+    });
+    statusSummary.replaceChildren(node('p', 'note', statuses.length + ' 个原始状态 · ' + mapped + ' 个已映射 · ' + (statuses.length - mapped) + ' 个待映射'), buildTable('状态语义映射', ['原始状态与工作流', '状态 ID', '统一管理语义', '计时节点', '映射结果'], rows, '当前筛选没有状态。'));
+    recoverySummary.replaceChildren(node('p', null, verified + ' / ' + statuses.length + ' 个状态已验证恢复'), node('p', 'note', '未映射状态继续同步，但暂停受影响的完成判断、开发/测试历时、风险和通知。恢复需相关数据重新同步、计算或校验确认；过程继续保留。'));
+  }
+  function openCalendarDate(day = control('mg-calendar-day').value) {
+    control('mg-calendar-day').value = day || '';
+    control('mg-calendar-reason').value = '';
+    const entry = catalog?.calendar?.[day];
+    control('mg-calendar-working').value = entry ? String(entry.working) : 'inherit';
+    const intervals = entry?.intervals ?? [{ start: '09:00', end: '12:00' }, { start: '13:30', end: '18:00' }];
+    const container = control('mg-calendar-intervals');
+    while (container.children.length < intervals.length) control('mg-calendar-add-interval').click();
+    while (container.children.length > intervals.length) container.lastElementChild.remove();
+    for (const [index, interval] of intervals.entries()) {
+      container.children[index].querySelector('[aria-label="时段开始"]').value = interval.start;
+      container.children[index].querySelector('[aria-label="时段结束"]').value = interval.end;
+    }
+    calendarEditor.showModal();
+  }
+  function renderCalendar() {
+    if (!catalog) return;
+    calendarBoard.replaceChildren();
+    const controls = node('div', 'section-head');
+    const move = offset => {
+      const date = new Date(calendarMonth + '-01T00:00:00Z'); date.setUTCMonth(date.getUTCMonth() + offset);
+      calendarMonth = date.toISOString().slice(0, 7); renderCalendar();
+    };
+    controls.append(button('上个月', () => move(-1), 'button small'), node('b', null, calendarMonth), button('下个月', () => move(1), 'button small'));
+    const weekdays = node('div', 'config-calendar-week');
+    for (const day of ['日','一','二','三','四','五','六']) weekdays.append(node('span', null, day));
+    const days = node('div', 'config-calendar-days');
+    const start = new Date(calendarMonth + '-01T00:00:00Z');
+    for (let i = 0; i < start.getUTCDay(); i++) days.append(node('span'));
+    const end = new Date(start); end.setUTCMonth(end.getUTCMonth() + 1); end.setUTCDate(0);
+    for (let date = 1; date <= end.getUTCDate(); date++) {
+      const day = calendarMonth + '-' + String(date).padStart(2, '0');
+      const weekday = new Date(day + 'T00:00:00Z').getUTCDay();
+      const entry = catalog.calendar[day], working = entry?.working ?? (weekday !== 0 && weekday !== 6);
+      const label = entry ? working ? '特殊工作日' : '休息日' : working ? '工作日' : '休息日';
+      const cell = button('', () => openCalendarDate(day), 'config-calendar-day' + (!working ? ' rest' : entry ? ' special' : ''));
+      cell.setAttribute('aria-label', day + ' ' + label); cell.disabled = !editable;
+      cell.append(node('b', null, date), node('small', null, label)); days.append(cell);
+    }
+    calendarBoard.append(controls, weekdays, days);
+  }
+  async function showVersions() {
+    const loadingBox = loading('正在读取版本范围…'); versionsPanel.body.replaceChildren(loadingBox);
     try {
-      if (state.actor.role !== 'owner') {
-        roles.replaceChildren(node('p', null, '当前身份：' + state.actor.displayName + ' · ' + (ROLE_NAMES[state.actor.role] ?? '权限未知')),
-          node('p', 'note', '完整系统权限清单仅对所有者开放。'));
-      } else {
-        const records = await api('/api/access');
-        const rows = records.map(person => {
-          const row = node('tr');
-          row.append(node('td', null, person.displayName), node('td', null, ROLE_NAMES[person.role] ?? '未知'),
-            node('td', null, person.active && person.mappingEnabled && person.confirmed ? '身份有效' : '停用或未确认'));
-          return row;
-        });
-        roles.replaceChildren(buildTable('人员与权限', ['人员', '系统权限', '身份状态'], rows, '暂无可读取人员。'));
-      }
-      peopleLoaded = true;
-    } catch (error) { roles.replaceChildren(errorCard(error.message, showPeople)); }
+      const [versions, status] = await Promise.all([api('/api/versions'), api('/api/status').catch(() => null)]);
+      const lifecycleNames = { enrolled: '已纳入', stopped: '停止纳入', ended: '已结束' };
+      const rows = versions.map(version => {
+        const row = node('tr');
+        row.append(node('td', null, version.displayName), node('td', null, version.ownerName || '待确认'), node('td', null, formatDate(version.syncStartAt)), node('td', null, lifecycleNames[version.lifecycle ?? 'enrolled'] || '状态待核对'), node('td', null, (SYNC_NAMES[version.syncStatus] || '同步状态未知') + ' · ' + formatDate(version.lastSuccessAt)), node('td', null, !status ? '调度状态读取失败' : !status.pollingEnabled ? '自动轮询未启用' : !version.ownerConfirmed ? '负责人待确认，自动同步暂停' : '下次检查：' + formatDate(version.nextDueAt)), node('td', null, version.bindingVerifiedAt ? '已核对' : '待首次核对'));
+        const actions = node('td', 'config-row-actions'); actions.append(link('查看任务', versionHash(version.id), 'row-link'));
+        if (editable && (!version.lifecycle || version.lifecycle === 'enrolled')) {
+          const sync = button('读取来源并同步', async () => { sync.disabled = true; try { await syncOne(version); } finally { sync.disabled = false; } }, 'button small'); actions.append(sync);
+        }
+        row.append(actions); return row;
+      });
+      versionsPanel.body.replaceChildren(buildTable('版本范围', ['版本', '负责人', 'Teambition 同步起点', '本系统状态', '最近同步', '自动同步', '来源绑定', '操作'], rows, '尚未纳入版本。'), node('p', 'note', '来源未提供的 TB 计划和状态不推测填写。移除、停止、恢复及结束管理尚无正式接口，本页保留当前事实。'));
+    } catch (error) { versionsPanel.body.replaceChildren(errorCard(error.message, showVersions)); }
   }
-  const rulesNotice = node('div', 'notice');
-  rulesNotice.append(node('p', null, '通知对象依据已确认身份、版本负责人和有效执行者确定。权限角色不自动推定业务角色，修改本页配置不会直接发送消息。'));
-  people.append(rulesNotice);
-  function selectTab(name) {
-    people.hidden = name !== 'people';
-    forms.hidden = name === 'people';
-    forms.querySelector('h2').textContent = name === 'status' ? '状态语义' : '版本与规则';
-    for (const details of detailForms) {
-      const status = Boolean(details.querySelector('#mg-mapping-form'));
-      details.hidden = name === 'status' ? !status : status;
-      if (status && name === 'status') details.open = true;
+  async function syncOne(version) {
+    const reason = window.prompt('请填写本次同步原因。取消则不执行。'); if (!reason?.trim()) return;
+    try {
+      const result = await api('/api/versions/' + version.id + '/sync', { method: 'POST', body: { reason } });
+      feedback.textContent = result.status === 'succeeded' ? '同步完成：' + result.importedCount + ' 张任务。' : '同步失败：' + result.errorCode + '。已有数据保留。';
+      clearVersionCaches(version.id); await showVersions();
+    } catch (error) { feedback.textContent = '同步未完成：' + error.message + '。请先刷新核对结果，不要重复提交。'; }
+  }
+  const refreshVersions = button('刷新版本列表', showVersions, 'button small'); versionsPanel.head.append(refreshVersions);
+  const enrollment = node('dialog', 'config-v2-dialog'); enrollment.setAttribute('aria-label', '选择版本'); forms.append(enrollment);
+  async function openEnrollment() {
+    enrollment.replaceChildren(node('h2', 'section-title', '选择版本'), loading('正在读取已批准候选版本与负责人…'));
+    enrollment.showModal();
+    try {
+      const [choices, people] = await Promise.all([api('/api/source-candidates'), api('/api/version-people')]);
+      const form = node('form', 'config-enrollment');
+      const candidate = node('select', 'select'), owner = node('select', 'select'), reason = node('textarea', 'input');
+      const addField = (title, element) => { element.setAttribute('aria-label', title); const label = node('label', 'field'); label.append(node('span', null, title), element); form.append(label); };
+      for (const [select, title] of [[candidate, '请选择版本'], [owner, '请选择负责人']]) { select.required = true; const option = node('option', null, title); option.value = ''; select.append(option); }
+      for (const choice of choices) { const option = node('option', null, choice.projectName + ' · ' + choice.versionName); option.value = choice.versionId; option.dataset.project = choice.projectId; candidate.append(option); }
+      for (const person of people) { const option = node('option', null, person.displayName); option.value = person.id; owner.append(option); }
+      reason.required = true; reason.maxLength = 500;
+      addField('Teambition 版本', candidate); addField('版本负责人', owner); addField('核对依据与纳入原因', reason);
+      form.append(node('p', 'note', '启用时补齐当前工单结构与状态；起点前的流转和历时不自动追溯。同一版本重复确认仅核对负责人，不改变原同步起点。'));
+      const errorText = node('p', 'error-box'); errorText.hidden = true; errorText.setAttribute('role', 'alert');
+      const actions = node('div', 'section-actions');
+      const save = button('核对来源并确认', () => {}, 'button primary'); save.type = 'submit'; save.disabled = !choices.length || !people.length;
+      actions.append(button('取消', () => enrollment.close(), 'button small'), save); form.append(errorText, actions);
+      form.addEventListener('submit', async event => {
+        event.preventDefault(); if (!form.reportValidity()) return; save.disabled = true;
+        try {
+          await api('/api/versions', { method: 'POST', body: { projectId: candidate.selectedOptions[0].dataset.project, versionId: candidate.value, ownerId: owner.value, reason: reason.value } });
+          enrollment.close(); feedback.textContent = '已确认版本与负责人；请同步来源读取当前快照。'; state.versions = null;
+          await showVersions();
+          try { await management.refresh(); populateVersionSelect(await loadVersions(true)); }
+          catch { feedback.textContent = '版本已确认，但配置刷新失败；请刷新配置核对，无需重复确认。'; }
+        } catch (error) { errorText.hidden = false; errorText.textContent = '确认未完成：' + error.message + '。若请求中断，请先刷新列表核对保存结果。'; }
+        finally { save.disabled = false; }
+      });
+      enrollment.replaceChildren(node('h2', 'section-title', '选择版本'), form);
+    } catch (error) { enrollment.replaceChildren(errorCard(error.message), button('关闭', () => enrollment.close(), 'button small')); }
+  }
+  const enroll = button('选择版本', openEnrollment, 'button primary'); enroll.hidden = !editable; versionsPanel.head.append(enroll);
+  const personEditor = node('dialog', 'config-v2-dialog'); personEditor.setAttribute('aria-label', '编辑人员配置'); forms.append(personEditor);
+  function openPersonEditor(person, kind) {
+    const form = node('form', 'config-person-editor');
+    const field = (title, input) => { input.setAttribute('aria-label', title); const label = node('label', 'field'); label.append(node('span', null, title), input); form.append(label); };
+    let role, active, mapping, name, identity, confirmed;
+    if (!person) {
+      name = node('input', 'input'); name.required = true; name.maxLength = 100; field('显示姓名', name);
+      identity = node('input', 'input'); identity.required = true; identity.maxLength = 200; identity.autocomplete = 'off'; field('已核实的钉钉 Union ID', identity);
+      confirmed = node('input'); confirmed.type = 'checkbox'; confirmed.required = true; field('已核对当前企业及该人员的可信身份', confirmed);
+    } else if (kind === 'role') {
+      role = node('select', 'select');
+      for (const [value, title] of Object.entries(ROLE_NAMES)) { const option = node('option', null, title); option.value = value; role.append(option); }
+      role.value = person.role; field('系统权限', role);
+    } else {
+      active = node('input'); active.type = 'checkbox'; active.checked = person.active; field('启用人员', active);
+      mapping = node('input'); mapping.type = 'checkbox'; mapping.checked = person.mappingEnabled; field('启用身份映射', mapping);
     }
-    for (const item of tabs.children) {
-      const active = item.dataset.tab === name;
-      item.classList.toggle('active', active);
-      if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
-    }
-    if (name === 'people') void showPeople();
+    const reason = node('textarea', 'input'); reason.required = true; reason.maxLength = 500; field('变更依据与原因', reason);
+    form.append(node('p', 'note', person ? '保存权限或身份变更会撤销该人员旧会话。最后一名有效所有者不能降级或停用。' : '登记后无后台权限，须由所有者明确授权。不按姓名自动匹配身份。'));
+    const error = node('p', 'error-box'); error.hidden = true; error.setAttribute('role', 'alert');
+    const actions = node('div', 'section-actions'); const save = button('确认保存', () => {}, 'button primary'); save.type = 'submit';
+    actions.append(button('取消', () => personEditor.close(), 'button small'), save); form.append(error, actions);
+    form.addEventListener('submit', async event => {
+      event.preventDefault(); if (!form.reportValidity()) return; save.disabled = true;
+      try {
+        if (!person) await api('/api/identities', { method: 'POST', body: { displayName: name.value, unionId: identity.value, reason: reason.value, confirmed: confirmed.checked } });
+        else {
+          const changes = kind === 'role' ? { role: role.value } : { active: active.checked, mappingEnabled: mapping.checked };
+          if (Object.entries(changes).every(([key, value]) => value === person[key])) throw new Error('没有修改配置。');
+          await api('/api/' + (kind === 'role' ? 'access/' : 'identities/') + person.id, { method: 'PATCH', body: { ...changes, reason: reason.value } });
+        }
+        personEditor.close(); feedback.textContent = person ? '变更已保存，目标人员旧会话已撤销。' : '身份已登记，尚无后台权限。';
+        if (person?.id === state.actor.id) { location.reload(); return; }
+        await showPeople();
+      } catch (failure) { error.hidden = false; error.textContent = failure.message + '；请求中断时请先刷新核对结果，不要重复提交。'; }
+      finally { save.disabled = false; }
+    });
+    personEditor.replaceChildren(node('h2', 'section-title', person ? person.displayName + (kind === 'role' ? ' · 系统权限' : ' · 身份配置') : '登记已核实身份'), form);
+    personEditor.showModal();
   }
-  for (const [name, label] of [['rules', '版本与规则'], ['status', '状态语义'], ['people', '人员与通知']]) {
-    const item = button(label, () => selectTab(name), 'nav');
-    item.dataset.tab = name;
-    tabs.append(item);
+  const registerPerson = button('登记已核实身份', () => openPersonEditor(null), 'button primary');
+  registerPerson.hidden = !editable; peoplePanel.head.append(registerPerson);
+  async function showPeople() {
+    try {
+      if (state.actor.role !== 'owner') { peopleBody.replaceChildren(node('p', null, '当前身份：' + state.actor.displayName + ' · ' + (ROLE_NAMES[state.actor.role] || '权限未知')), node('p', 'note', '完整系统权限清单仅对所有者开放。')); return; }
+      const records = await api('/api/access');
+      const rows = records.map(person => {
+        const row = node('tr'); const actions = node('td', 'config-row-actions');
+        actions.append(button('编辑权限', () => openPersonEditor(person, 'role'), 'button small'), button('编辑身份', () => openPersonEditor(person, 'identity'), 'button small'));
+        row.append(node('td', null, person.displayName), node('td', null, ROLE_NAMES[person.role] || '未知'), node('td', null, person.active && person.mappingEnabled && person.confirmed ? '身份有效' : '停用或未确认'), actions); return row;
+      });
+      peopleBody.replaceChildren(buildTable('人员与权限', ['人员', '系统权限', '身份状态', '操作'], rows, '暂无人员。'), node('p', 'note', '业务角色编辑和需求范围接收人预览尚未接入。系统权限不自动推定业务角色。'));
+    } catch (error) { peopleBody.replaceChildren(errorCard(error.message, showPeople)); }
   }
-  content.append(forms, people);
-  layout.append(tabs, content);
-  view.append(layout);
-  await setupManagement(state.actor, (path, method = 'GET', body) => api(path, { method, body }), forms);
-  selectTab(new URLSearchParams(current.raw.split('?')[1] ?? '').get('section') === 'status' ? 'status' : 'rules');
+  management = await setupManagement(state.actor, (path, method = 'GET', value) => api(path, { method, body: value }), layout, {
+    onChange(value) { catalog = value.data; currentRules = value.rules; currentScope = value.scope; currentKey = value.key; renderRuleSummary(); renderStatusSummary(); renderCalendar(); },
+    onSaved() { for (const editor of editors) editor.close(); }
+  });
+  for (const select of [projectSelect, workflowSelect]) select.addEventListener('change', renderStatusSummary);
+  refresh.addEventListener('click', () => { void showVersions(); void showPeople(); });
+  for (const input of [control('mg-scope'), control('mg-version'), control('mg-requirement')]) input.addEventListener('change', renderRuleSummary);
+  // Status summaries use saved catalog values, never the unsaved editor draft.
+  const updateStatus = () => renderStatusSummary();
+  mappingEditor.addEventListener('close', () => { management.discardMapping(); updateStatus(); });
+  control('mg-review').addEventListener('close', () => { renderRuleSummary(); renderStatusSummary(); });
+  await Promise.all([showVersions(), showPeople()]); renderStatusSummary(); showPage();
 }
+
 
 function renderHistory(view) {
   placeholderPage(

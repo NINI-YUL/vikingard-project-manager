@@ -595,3 +595,113 @@ body.v2-page {
  .requirement-page .requirement-other-grid { grid-template-columns: minmax(0,1fr); gap: 10px; }
  .requirement-page .requirement-work-card { min-height: 0; padding: 14px; }
 }
+
+.config-v2-shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: calc(100vh - 95px); background: #f8f9fc; }
+.config-v2-rail { padding: 22px 12px; background: #fff; border-right: 1px solid #e9edf4; }
+.config-v2-brand { display: flex; align-items: center; gap: 8px; padding: 0 8px 18px; color: #30384b; font-size: 13px; font-weight: 600; }
+.config-v2-brand .mark { width: 28px; height: 28px; border-radius: 8px; background: #4c6cda; color: #fff; }
+.config-v2-rail > .button { width: 100%; justify-content: flex-start; }
+.config-v2-label { margin: 22px 10px 10px; color: #788295; font-size: 10px; letter-spacing: .08em; }
+.config-v2-nav { display: block; width: 100%; margin: 4px 0; padding: 13px 12px; border: 0; border-radius: 7px; background: none; color: #495267; text-align: left; }
+.config-v2-nav b, .config-v2-nav small { display: block; }
+.config-v2-nav b { font-size: 12px; font-weight: 500; }
+.config-v2-nav small { margin-top: 4px; color: #788295; font-size: 10px; line-height: 1.7; }
+.config-v2-nav.active { color: #405fae; background: #eaf0fb; }
+.config-v2-rail-note { margin: 26px 9px 0; padding-top: 16px; border-top: 1px solid #e9edf4; color: #788295; font-size: 10px; line-height: 1.85; }
+.config-v2-main { min-width: 0; padding-bottom: 28px; }
+.config-v2-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 28px; background: #ffffffb8; border-bottom: 1px solid #edf0f5; }
+.config-v2-top h1 { margin: 0; color: #344054; font-size: 21px; line-height: 1.5; font-weight: 600; }
+.config-v2-top .note { margin-top: 4px; font-size: 11px; }
+.config-v2-content { max-width: 1360px; margin: auto; padding: 22px 28px; }
+.config-v2-tabs, .config-v2-subtabs { display: flex; gap: 3px; overflow: auto; border-bottom: 1px solid #edf0f5; }
+.config-v2-tabs { margin-bottom: 14px; }
+.config-v2-workspace-tab, .config-v2-subtab { min-height: 36px; padding: 9px 16px 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: #687185; white-space: nowrap; }
+.config-v2-workspace-tab.active, .config-v2-subtab.active { color: #405fae; border-bottom-color: #4c6cda; font-weight: 600; }
+.config-v2-subtabs { margin-bottom: 18px; }
+.config-v2-body { min-width: 0; }
+.config-v2-section { margin: 12px 0; overflow: hidden; border-color: #e9edf4; border-radius: 10px; box-shadow: 0 3px 10px #33436603; }
+.config-v2-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; border-bottom: 1px solid #edf0f5; }
+.config-v2-section-head h2 { margin: 0; }
+.config-v2-section-head p { margin: 4px 0 0; }
+.config-v2-section-body { padding: 16px 18px; }
+.config-v2-form { margin: 12px 0; padding: 0; border: 1px solid #e9edf4; border-radius: 10px; box-shadow: 0 3px 10px #33436603; }
+.config-v2-form > h2, .config-v2-form > h2 + p { display: none; }
+.config-v2-form > details { margin-top: 0; padding: 16px 18px; border-top: 1px solid #edf0f5; }
+.config-v2-form > details:first-of-type { border-top: 0; }
+.config-v2-form > details > summary { color: #344054; font-size: 14px; font-weight: 600; }
+.config-v2-form table { font-size: 12px; }
+.config-v2-form th { background: #f8fafc; color: #687185; font-size: 11px; font-weight: 500; }
+.config-v2-form td { padding: 12px 14px; color: #465064; }
+@media (max-width: 900px) { .config-v2-shell { grid-template-columns: 1fr; } .config-v2-rail { display: none; } .config-v2-top { display: block; padding: 16px; } .config-v2-top .toolbar { margin-top: 12px; } .config-v2-content { padding: 16px; } }
+/* Configuration values mirror V2 config.css, version-rules.css and rules-editor.css. */
+.config-page .content { padding: 0; }
+.config-page > .shell > .main > .top { display: none; }
+.config-page .config-v2-shell { grid-template-columns: 190px minmax(0, 1fr); gap: 0; }
+.config-page .config-v2-rail { padding: 24px 12px; background: #f8fafd; }
+.config-page .config-v2-nav { padding: 12px 10px; margin: 5px 0; color: #61697b; cursor: pointer; }
+.config-page .config-v2-nav.active b { font-weight: 600; }
+.config-page .config-v2-top { padding: 22px 24px; align-items: flex-start; }
+.config-page .config-v2-content { max-width: none; padding: 18px 24px 28px; }
+.config-page .config-v2-subtabs { gap: 24px; margin-bottom: 18px; }
+.config-page .config-v2-subtab { font-size: 12px; padding: 9px 0 12px; cursor: pointer; }
+.config-page .config-v2-section { background: white; margin: 16px 0; }
+.config-page .config-v2-section:first-child { margin-top: 0; }
+.config-page .config-v2-section .table-wrap { border: 0; }
+.config-page .config-v2-section .section-title { font-size: 14px; }
+.config-page .config-v2-section h3 { font-size: 12px; font-weight: 600; color: #465064; margin: 0 0 8px; }
+.config-page .config-v2-section-body { font-size: 12px; line-height: 1.85; }
+.config-page .config-v2-section th { background: #f8fafc; color: #687185; font-size: 11px; font-weight: 500; padding: 11px 14px; }
+.config-page .config-v2-section td { font-size: 12px; padding: 14px; color: #465064; line-height: 1.8; }
+.config-page .config-v2-section table { min-width: 660px; }
+.config-page .config-v2-form-host { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.config-page .config-v2-form-host > details { padding: 16px 18px; }
+.config-page .config-v2-form-host .config-extra { padding: 16px 18px; }
+.config-page .config-rule-controls { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.config-page .config-rule-controls .field { min-width: 150px; gap: 6px; }
+.config-page .config-rule-controls select { max-width: 100%; }
+.config-page .config-rule-stage { padding: 14px 0; border-bottom: 1px solid #edf0f5; }
+.config-page .config-rule-stage:first-child { padding-top: 0; }
+.config-page .config-rule-stage:last-child { border: 0; padding-bottom: 0; }
+.config-page .config-rule-stage > .note { margin: 4px 0 9px; }
+.config-page .config-rule-summary { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); gap: 18px; align-items: start; }
+.config-page .config-row-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.config-page .config-v2-dialog { width: min(840px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid #e1e7f1; border-radius: 12px; box-shadow: 0 24px 80px #26344d33; color: #465064; background: #fff; }
+.config-page .config-v2-dialog::backdrop { background: #24304440; }
+.config-page .config-v2-dialog > form { padding: 18px 22px; }
+.config-page .config-v2-dialog > h2 { padding: 18px 22px 0; }
+.config-page .config-v2-dialog form > label, .config-page .config-v2-dialog form > .field { display: block; margin: 14px 0 6px; font-size: 12px; }
+.config-page .config-v2-dialog form > :is(input,textarea) { width: 100%; }
+.config-page .config-v2-dialog :is(input, select, textarea) { min-height: 34px; padding: 6px 9px; border: 1px solid #e0e4ea; border-radius: 7px; color: #414854; background: white; font-size: 12px; }
+.config-page .config-v2-dialog input[type=checkbox] { min-height: 0; width: 13px; height: 13px; padding: 0; accent-color: #4c6cda; }
+.config-page #mg-rule-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.config-page #mg-rule-fields > fieldset { margin: 0; border: 1px solid #e5ebf3; border-radius: 8px; padding: 14px; min-width: 0; }
+.config-page #mg-rule-fields legend { font-size: 12px; font-weight: 600; }
+.config-page #mg-rule-fields label { padding: 5px 8px; font-size: 12px; border-radius: 6px; }
+.config-page #mg-rule-fields label:has(input:checked) { background: #edf2fb; color: #405fae; }
+.config-page #mg-rule-fields label:has(input:disabled) { opacity: .5; }
+.config-page #mg-function-feedback { grid-column: 1 / -1; font-size: 11px; line-height: 1.8; }
+.config-page .config-enrollment .field :is(select,textarea) { display: block; width: 100%; margin-top: 6px; }
+.config-page .config-v2-mobile { display: none; }
+@media(max-width:1100px) { .config-page .config-rule-summary { grid-template-columns: minmax(0,1fr); } }
+@media(max-width:900px) { .config-page .config-v2-shell { grid-template-columns: minmax(0,1fr); } .config-page .config-v2-rail { display: none; } .config-page .config-v2-mobile { display: block; width: 100%; margin-top: 10px; } .config-page .config-v2-top { display: block; padding: 16px; } .config-page .config-v2-content { padding: 16px; } }
+@media(max-width:700px) { .config-page #mg-rule-fields { grid-template-columns: minmax(0,1fr); } .config-page .config-v2-dialog > form { padding: 14px; } .config-page .config-rule-controls { display: grid; grid-template-columns: minmax(0,1fr); } .config-page .config-v2-section-head { flex-wrap: wrap; } }
+.config-calendar { margin-bottom: 18px; }
+.config-calendar-week, .config-calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 6px; }
+.config-calendar-week { margin-bottom: 8px; color: #687185; font-size: 11px; text-align: center; }
+.config-calendar-day { display: flex; flex-direction: column; gap: 5px; height: 78px; padding: 8px; border: 1px solid #e9edf4; border-radius: 7px; background: white; color: #465064; text-align: left; cursor: pointer; }
+.config-calendar-day b { font-size: 12px; font-weight: 500; }
+.config-calendar-day small { font-size: 10px; }
+.config-calendar-day.rest { background: #f7f9fc; }
+.config-calendar-day.special { background: #eef3fb; border-color: #dce5f3; }
+@media(max-width:700px) { .config-calendar-days { gap: 3px; } .config-calendar-day { height: 62px; padding: 4px; } }
+
+.config-page .config-rule-summary > .config-v2-section { margin: 0; }
+/* V2 version-rules.css overrides the shared configuration workspace metrics. */
+.config-page .config-v2-shell[data-workspace=version] .config-v2-top h1 { font-size: 22px; }
+.config-page .config-v2-shell[data-workspace=version] .config-v2-subtabs { gap: 28px; margin-bottom: 20px; }
+.config-page .config-v2-shell[data-workspace=version] .config-v2-subtab { font-size: 13px; }
+@media(max-width:760px) { .config-page .config-v2-shell[data-workspace=version] .config-v2-subtabs { gap: 22px; } }
+.config-page .config-v2-shell[data-workspace=version] .config-v2-content { padding-top: 20px; }
+.config-page .config-v2-shell[data-workspace=version] .config-v2-top .note { font-size: 12px; }
+.config-page .config-person-editor .field :is(input:not([type=checkbox]),select,textarea) { display: block; width: 100%; margin-top: 6px; }
+.config-page .config-person-editor .field input[type=checkbox] { margin-left: 8px; }
