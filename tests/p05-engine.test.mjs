@@ -50,6 +50,14 @@ test('P05 auxiliary and acceptance task trees can split recursively without prof
  auxGrandchild.source_status_id='dev';result=stages(root,items,rules,maps,['后台']);
  assert.equal(result.foundation.calculable,true);assert.equal(result.detail.calculable,true);assert.equal(result.test.complete,false);
 });
+test('P05 allows top-level standalone tasks without treating them as structure errors',()=>{
+ const standaloneTask=item('standalone','任务'),standaloneDefect=item('defect','缺陷'),child=item('child','任务','standalone'),missing=item('missing','任务','not-exists');
+ const bySource=new Map([standaloneTask,standaloneDefect,child,missing].map(i=>[i.source_task_id,i]));
+ assert.equal(objectKind(standaloneTask,bySource),'standalone');
+ assert.equal(objectKind(standaloneDefect,bySource),'standalone');
+ assert.equal(objectKind(child,bySource),'standalone');
+ assert.equal(objectKind(missing,bySource),'unknown');
+});
 test('P05 identifies acceptance by category/parent, never title; optimization counts and gates differ',()=>{
  const root=item('r','需求'),accept=item('a','任务','r',{category:'验收总单'}),task=item('at','任务','a'),wrong=item('wrong','任务','r',{title:'验收任务单'}),container=item('o','优化需求总单'),optimization=item('opt','优化需求','o'),child=item('ot','任务','opt',{source_status_id:'pending'});
  const items=[root,accept,task,wrong,container,optimization,child],bySource=new Map(items.map(i=>[i.source_task_id,i]));assert.equal(objectKind(task,bySource),'acceptance_task');assert.equal(objectKind(wrong,bySource),'auxiliary');assert.equal(optimizationSummary(items,maps)[0].stateComplete,true);assert.equal(optimizationSummary(items,maps)[0].completionGate,false);optimization.source_status_id='unknown';assert.equal(optimizationSummary(items,maps)[0].stateComplete,null);child.source_status_id='unknown';assert.equal(optimizationSummary(items,maps)[0].completionGate,null);

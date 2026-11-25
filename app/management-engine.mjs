@@ -35,6 +35,7 @@ export function objectKind(item,bySource){
   const parent=bySource.get(item.parent_source_task_id);
   if(item.type_name==='需求'&&!item.parent_source_task_id)return 'requirement';
   if(item.type_name==='优化需求总单'&&!item.parent_source_task_id)return 'optimization_container';
+  if(!item.parent_source_task_id&&['任务','缺陷'].includes(item.type_name))return 'standalone';
   if(item.type_name==='优化需求'&&parent?.type_name==='优化需求总单')return 'optimization';
   if(item.type_name==='子需求'&&parent?.type_name==='需求')return 'professional';
   if(item.type_name==='测试任务'&&parent?.type_name==='需求')return 'test';
@@ -56,6 +57,7 @@ export function objectKind(item,bySource){
       if(ancestor.type_name==='优化需求')return 'optimization_task';
       return 'unknown';
     }
+    if (!cursor) return 'standalone';
   }
   return 'unknown';
 }
