@@ -241,7 +241,7 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
 .version-requirements th:nth-child(2) { width: 14%; }
 .version-requirements th:nth-child(3), .version-requirements th:nth-child(4) { width: 19%; }
 .version-requirements th:last-child { width: 20%; border-radius: 0 5px 5px 0; }
-.version-requirements :is(th, td):nth-child(3), .version-requirements :is(th, td):nth-child(4) { text-align: right; }
+.version-requirements :is(th, td):nth-child(3), .version-requirements :is(th, td):nth-child(4) { text-align: left; }
 .version-requirements td:first-child { font-weight: 500; color: #344054; }
 .version-requirements .version-name { color: inherit; font-weight: inherit; }
 .version-requirements .version-name:hover { color: var(--primary); }

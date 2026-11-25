@@ -764,8 +764,8 @@ async function renderVersionDetail(current, view) {
     const foundation = stageSummary(progress, 'foundation');
     const opt = optimizationSummary(progress);
     metrics.append(
-      metricCard('核心需求', progress.coreRequirementCount + ' 个', '基础流程 ' + foundation.text + ' · ' + foundation.detail),
-      metricCard('优化需求', progress.optimization.total + ' 个', opt.text + ' · ' + opt.detail),
+      metricCard('核心需求', progress.coreRequirementCount, '基础流程 ' + foundation.text + ' · ' + foundation.detail),
+      metricCard('优化需求', progress.optimization.total, opt.text + ' · ' + opt.detail),
       metricCard('风险需求', '待接入', '风险需求聚合将在 P09 后续阶段接入', 'muted')
     );
     detailPane.append(metrics);
