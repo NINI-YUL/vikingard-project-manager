@@ -37,6 +37,19 @@ test('stage counts use whole functions, accumulate detail scope and preserve unk
  ui2.source_status_id='unmapped';result=stages(root,items,rules,maps);assert.equal(result.foundation.calculable,false);assert.equal(result.foundation.completedCount,1);assert.equal(result.detail.calculable,false);assert.deepEqual(result.detail.missingFunctions,['后台']);assert.deepEqual(result.detail.incompleteFunctions,['UI界面','UI图标','后台']);
  ui2.source_status_id='cancel';icon.source_status_id='done';result=stages(root,items,rules,maps,['后台']);assert.equal(result.detail.complete,true);assert.equal(result.detail.completedCount,4);assert.equal(result.detail.blockedTaskCount,0);
 });
+test('P05 auxiliary and acceptance task trees can split recursively without professional-stage unknown',()=>{
+ const root=item('r','需求'),ui=item('ui','子需求','r',{function_name:'UI界面'}),accept=item('a','任务','r',{category:'验收总单'}),acceptChild=item('ac','任务','a'),aux=item('aux','任务','r'),auxChild=item('ac2','任务','aux'),auxGrandchild=item('ag','任务','ac2'),missing=item('missing','任务','not-exists');
+ const items=[root,ui,accept,acceptChild,aux,auxChild,auxGrandchild],bySource=new Map(items.map(i=>[i.source_task_id,i]));
+ assert.equal(objectKind(aux,bySource),'auxiliary');assert.equal(objectKind(auxChild,bySource),'auxiliary');assert.equal(objectKind(auxGrandchild,bySource),'auxiliary');
+ assert.equal(objectKind(acceptChild,bySource),'acceptance_task');assert.equal(objectKind(missing,bySource),'unknown');
+ const rules=effectiveRules([{scope:'system',values:{foundation:['UI界面'],detail:['后台']}}]);
+ let result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.calculable,true);assert.equal(result.foundation.complete,true);assert.equal(result.detail.calculable,true);assert.equal(result.detail.complete,true);assert.equal(result.test.complete,true);
+ auxGrandchild.source_status_id='unmapped';result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.calculable,true);assert.equal(result.detail.calculable,true);assert.equal(result.test.calculable,false);assert.equal(result.test.complete,false);
+ auxGrandchild.source_status_id='dev';result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.calculable,true);assert.equal(result.detail.calculable,true);assert.equal(result.test.complete,false);
+});
 test('P05 identifies acceptance by category/parent, never title; optimization counts and gates differ',()=>{
  const root=item('r','需求'),accept=item('a','任务','r',{category:'验收总单'}),task=item('at','任务','a'),wrong=item('wrong','任务','r',{title:'验收任务单'}),container=item('o','优化需求总单'),optimization=item('opt','优化需求','o'),child=item('ot','任务','opt',{source_status_id:'pending'});
  const items=[root,accept,task,wrong,container,optimization,child],bySource=new Map(items.map(i=>[i.source_task_id,i]));assert.equal(objectKind(task,bySource),'acceptance_task');assert.equal(objectKind(wrong,bySource),'auxiliary');assert.equal(optimizationSummary(items,maps)[0].stateComplete,true);assert.equal(optimizationSummary(items,maps)[0].completionGate,false);optimization.source_status_id='unknown';assert.equal(optimizationSummary(items,maps)[0].stateComplete,null);child.source_status_id='unknown';assert.equal(optimizationSummary(items,maps)[0].completionGate,null);

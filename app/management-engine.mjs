@@ -41,9 +41,21 @@ export function objectKind(item,bySource){
   if(item.type_name==='缺陷'&&parent?.type_name==='测试任务')return 'defect';
   if(item.type_name==='任务'){
     if(item.category==='验收总单'&&parent?.type_name==='需求')return 'acceptance';
-    if(parent?.type_name==='任务'&&parent.category==='验收总单')return 'acceptance_task';
-    if(parent?.type_name==='优化需求')return 'optimization_task';
-    if(parent?.type_name==='需求'&&item.category!=='验收总单')return 'auxiliary';
+    // Task trees can be split recursively. Resolve the nearest non-task ancestor.
+    let cursor=item.parent_source_task_id,seen=new Set();
+    while(cursor&&!seen.has(cursor)){
+      seen.add(cursor);
+      const ancestor=bySource.get(cursor);
+      if(!ancestor)return 'unknown';
+      if(ancestor.type_name==='任务'){
+        if(ancestor.category==='验收总单')return 'acceptance_task';
+        cursor=ancestor.parent_source_task_id;
+        continue;
+      }
+      if(ancestor.type_name==='需求')return 'auxiliary';
+      if(ancestor.type_name==='优化需求')return 'optimization_task';
+      return 'unknown';
+    }
   }
   return 'unknown';
 }
@@ -52,14 +64,14 @@ export function stages(root,items,rules,mappings,exemptions=[]){
   const eligible=i=>i.source_presence==='current'&&objectKind(i,bySource)!=='unknown'&&!i.structure_issues?.length&&Boolean(mappings[i.source_status_id]);
   const professional=children.filter(i=>objectKind(i,bySource)==='professional');
   const unassigned=items.some(i=>i.source_presence==='current'&&i.parent_source_task_id&&!bySource.has(i.parent_source_task_id));
-  const invalidStructure=[...rules.foundation.value,...rules.detail.value].some(f=>!functions.includes(f))||Boolean(root.structure_issues?.length)||unassigned||children.some(i=>objectKind(i,bySource)==='unknown'||(i.type_name==='子需求'&&!functions.includes(i.function_name)));
+  const professionalInvalidStructure=[...rules.foundation.value,...rules.detail.value].some(f=>!functions.includes(f))||Boolean(root.structure_issues?.length)||(professional.some(i=>i.structure_issues?.length)||children.some(i=>i.type_name==='子需求'&&!functions.includes(i.function_name)));const allTreeInvalidStructure=Boolean(root.structure_issues?.length)||unassigned||children.some(i=>objectKind(i,bySource)==='unknown'||(i.type_name==='子需求'&&!functions.includes(i.function_name)));
   const rootBlocked=root.source_presence!=='current'||!Object.hasOwn(mappings,root.source_status_id)||Boolean(root.structure_issues?.length);
-  function selected(names){const missing=[],blocked=rootBlocked?[root.source_task_id]:[],incompleteFunctions=[];let unknown=rootBlocked||invalidStructure,completedCount=0;for(const f of names){const members=professional.filter(i=>i.function_name===f);if(!members.length){if(exemptions.includes(f))completedCount++;else{missing.push(f);incompleteFunctions.push(f);unknown=true;}}else{let functionComplete=true;for(const i of members)if(!eligible(i)||!terminal(mappings[i.source_status_id]?.semantic)){blocked.push(i.source_task_id);functionComplete=false;if(!eligible(i))unknown=true;}if(functionComplete)completedCount++;else incompleteFunctions.push(f);}}
-    return {calculable:!unknown,complete:root.source_presence==='current'&&Boolean(mappings[root.source_status_id])&&!invalidStructure&&!missing.length&&!blocked.length,completedCount,totalCount:names.length,incompleteFunctions,missingFunctions:missing,blockedTaskIds:blocked,blockedTaskCount:new Set(blocked).size,structureUnknown:invalidStructure};}
+  function selected(names){const missing=[],blocked=rootBlocked?[root.source_task_id]:[],incompleteFunctions=[];let unknown=rootBlocked||professionalInvalidStructure,completedCount=0;for(const f of names){const members=professional.filter(i=>i.function_name===f);if(!members.length){if(exemptions.includes(f))completedCount++;else{missing.push(f);incompleteFunctions.push(f);unknown=true;}}else{let functionComplete=true;for(const i of members)if(!eligible(i)||!terminal(mappings[i.source_status_id]?.semantic)){blocked.push(i.source_task_id);functionComplete=false;if(!eligible(i))unknown=true;}if(functionComplete)completedCount++;else incompleteFunctions.push(f);}}
+    return {calculable:!unknown,complete:root.source_presence==='current'&&Boolean(mappings[root.source_status_id])&&!professionalInvalidStructure&&!missing.length&&!blocked.length,completedCount,totalCount:names.length,incompleteFunctions,missingFunctions:missing,blockedTaskIds:blocked,blockedTaskCount:new Set(blocked).size,structureUnknown:professionalInvalidStructure};}
   const foundation=selected(rules.foundation.value),detail=selected([...rules.foundation.value,...rules.detail.value]);
   const blocked=children.filter(i=>!eligible(i)||!terminal(mappings[i.source_status_id]?.semantic)).map(i=>i.source_task_id);if(rootBlocked)blocked.push(root.source_task_id);
   const completedChildren=children.filter(i=>eligible(i)&&terminal(mappings[i.source_status_id].semantic)).length;
-  return {foundation,detail,test:{calculable:!rootBlocked&&!invalidStructure&&children.length>0&&children.every(eligible),complete:root.source_presence==='current'&&Boolean(mappings[root.source_status_id])&&!invalidStructure&&children.length>0&&!blocked.length,completedCount:completedChildren,totalCount:children.length,blockedTaskIds:blocked,blockedTaskCount:new Set(blocked).size,empty:children.length===0},deliveredCount:children.filter(i=>eligible(i)&&mappings[i.source_status_id].semantic==='delivered').length,nonDeliveryCount:children.filter(i=>eligible(i)&&mappings[i.source_status_id].semantic==='non_delivery').length};
+  return {foundation,detail,test:{calculable:!rootBlocked&&!allTreeInvalidStructure&&children.length>0&&children.every(eligible),complete:root.source_presence==='current'&&Boolean(mappings[root.source_status_id])&&!allTreeInvalidStructure&&children.length>0&&!blocked.length,completedCount:completedChildren,totalCount:children.length,blockedTaskIds:blocked,blockedTaskCount:new Set(blocked).size,empty:children.length===0},deliveredCount:children.filter(i=>eligible(i)&&mappings[i.source_status_id].semantic==='delivered').length,nonDeliveryCount:children.filter(i=>eligible(i)&&mappings[i.source_status_id].semantic==='non_delivery').length};
 }
 export function versionProgress(requirements,optimizations){
   const count=requirements.length;const result={coreRequirementCount:count};
