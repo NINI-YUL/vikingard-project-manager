@@ -27,6 +27,7 @@ test('P05 PostgreSQL config preview/save, inheritance, role checks, mapping reco
   await pool.query("INSERT INTO executor_identity_mappings(source_project_id,executor_source_id,person_id,confirmed_by) VALUES($1,'source-person',$2,$2)",[projectDb,owner.id]);
   await pool.query("UPDATE work_items SET source_status_id='pending',planned_due_at='2026-11-26T10:00:00+08:00' WHERE source_task_id=$1",[taskId]);
   const boundary=await managementResults(pool,version.id,new Date('2026-11-23T10:00:00+08:00'));
+  assert.deepEqual(boundary.calendar['2026-11-14'],{working:true,intervals:[{start:'09:00',end:'12:00'}]});
   const professional=boundary.items.find(item=>item.sourceTaskId===taskId);
   assert.equal(professional.due.dueSoon,true);assert.equal(professional.due.workingDaysUntil,3);assert.equal(professional.requirementTitle,'核心需求');assert.equal(professional.executorName,'owner');assert.equal(professional.parentSourceTaskId,rootId);assert.equal(professional.typeName,'子需求');assert.equal(new Date(professional.plannedStartAt).toISOString(),'2026-11-16T02:00:00.000Z');
   await pool.query("UPDATE executor_identity_mappings SET enabled=false WHERE executor_source_id='source-person'");

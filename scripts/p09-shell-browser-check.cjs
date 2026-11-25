@@ -42,6 +42,7 @@ function management(index) {
     }
   };
   return {
+    calendar: { '2026-11-21': { working: true }, '2026-11-23': { working: false } },
     versionId: versionIds[index],
     items: index ? [fact('server', 'professional', '服务端', { overdue: true, workingDays: 2 })] : facts,
     requirements: index ? [] : [requirement],
@@ -250,6 +251,59 @@ let server, browser;
     assert.match(await page.locator('.requirement-overview').innerText(), /测试核心需求/);
     assert.equal(await page.locator('.requirement-timeline-row').count(), 2);
     assert.equal(await page.locator('.requirement-work-card').count(), 1);
+    assert.equal(await page.locator('body').evaluate(element => element.classList.contains('requirement-page')), true);
+    await page.evaluate(() => document.fonts.ready);
+    assert.match(await page.locator('body').evaluate(element => getComputedStyle(element).fontFamily), /Plus Jakarta Sans/);
+    assert.equal(await page.locator('.requirement-day').count(), 7);
+    assert.equal(await page.locator('.requirement-day.special').count(), 1);
+    assert.equal(await page.locator('.requirement-day.rest').count(), 2);
+    const calendarComparison = [];
+    let v2Requirement;
+    if (process.env.VIKINGPM_V2_ORIGIN) {
+      v2Requirement = await browser.newPage(); v2Requirement.setDefaultTimeout(5000);
+      await v2Requirement.goto(process.env.VIKINGPM_V2_ORIGIN);
+      await v2Requirement.locator('.side [data-page="versions"]').click();
+      await v2Requirement.locator('.version-requirement-link').first().click();
+      await v2Requirement.locator('.req-overview').waitFor();
+      await v2Requirement.mouse.move(0, 0);
+      await v2Requirement.evaluate(() => document.fonts.ready);
+    }
+    for (const width of [1440, 768, 375]) {
+      await page.setViewportSize({ width, height: 1000 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      const scroll = page.locator('.requirement-timeline');
+      const labelLeft = await page.locator('.requirement-timeline-label').first().evaluate(element => element.getBoundingClientRect().left);
+      await scroll.evaluate(element => element.scrollLeft = 200);
+      assert.ok(Math.abs(labelLeft - await page.locator('.requirement-timeline-label').first().evaluate(element => element.getBoundingClientRect().left)) < 1);
+      await scroll.evaluate(element => element.scrollLeft = 0);
+      await page.screenshot({ path: path.join(output, 'p09-requirement-v2-' + width + '.png'), fullPage: true });
+      if (v2Requirement) {
+        await v2Requirement.setViewportSize({ width, height: 1000 });
+        const pairs = [
+          ['body', 'body', ['fontFamily', 'fontSize', 'fontSynthesis']],
+          ['.content', '.detail-page', ['padding', 'backgroundColor']],
+          ['.requirement-title', '.req-overview h1', ['fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'color']],
+          ['.requirement-overview', '.req-overview', ['padding', 'gap', 'borderRadius', 'borderColor', 'boxShadow']],
+          ['.requirement-meta', '.req-meta', ['fontSize', 'lineHeight', 'color']],
+          ['.requirement-tags', '.req-tags', ['gap', 'marginTop']],
+          ['.requirement-overview-fact b', '.req-fact b', ['fontSize', 'lineHeight', 'fontWeight', 'color']],
+          ['.requirement-timeline-card', '.gantt-v2', ['padding', 'borderRadius', 'borderColor', 'boxShadow']],
+          ['.requirement-timeline-label', '.gantt-v2-label', ['padding', 'position', 'backgroundColor']],
+          ['.requirement-work-name', '.work-name', ['fontSize', 'lineHeight', 'fontWeight', 'color']],
+          ['.requirement-work-card', '.work-card', ['padding', 'borderRadius', 'minHeight', 'borderColor', 'boxShadow']]
+        ];
+        for (const [actualSelector, expectedSelector, properties] of pairs) {
+          const read = (target, selector) => target.locator(selector).first().evaluate((element, properties) => {
+            const style = getComputedStyle(element); return Object.fromEntries(properties.map(property => [property, style[property]]));
+          }, properties);
+          calendarComparison.push({ width, selector: actualSelector, actual: await read(page, actualSelector), expected: await read(v2Requirement, expectedSelector) });
+        }
+      }
+    }
+    await v2Requirement?.close();
+    fs.writeFileSync(path.join(output, 'p09-requirement-comparison.json'), JSON.stringify(calendarComparison, null, 2));
+    for (const row of calendarComparison) assert.deepEqual(row.actual, row.expected, row.width + 'px ' + row.selector);
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.screenshot({ path: path.join(output, 'p09-requirement-desktop.png'), fullPage: true });
 
     await page.goto(origin + '/#/action');

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createApplication } from '../app/server.mjs';
-import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber } from '../app/public/shell.js';
+import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber, requirementCalendar } from '../app/public/shell.js';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 
@@ -152,4 +152,16 @@ test('local V2 fonts are served without login or database access and CSP permits
     const bytes = Buffer.from(await response.arrayBuffer());
     assert.deepEqual(bytes, await readFile(new URL('../app/public/assets/jakarta-' + weight + '.ttf', import.meta.url)));
   }
+});
+
+
+test('requirement calendar uses Beijing days and respects configured holidays and special workdays', () => {
+  const days = requirementCalendar('2026-11-20T16:30:00Z', '2026-11-23T00:00:00Z', {
+    '2026-11-21': { working: true }, '2026-11-23': { working: false }
+  });
+  assert.deepEqual(days.map(day => [day.key, day.working, day.special]), [
+    ['2026-11-21', true, true], ['2026-11-22', false, false], ['2026-11-23', false, false]
+  ]);
+  assert.equal(requirementCalendar('2026-11-20T00:00:00Z', '2026-11-20T01:00:00Z').length, 1);
+  for (const pair of [[null, null], ['bad', 'bad'], ['2026-11-23', '2026-11-20'], ['2000-01-01', '2026-01-01']]) assert.deepEqual(requirementCalendar(...pair), []);
 });

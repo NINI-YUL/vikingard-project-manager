@@ -441,6 +441,8 @@ async function route() {
   const current = parseHash(location.hash);
   if (!location.hash) history.replaceState(null, '', '#/action');
   document.body.classList.toggle('version-page', ['versions', 'versionDetail'].includes(current.name));
+  document.body.classList.toggle('requirement-page', current.name === 'requirements');
+  document.body.classList.toggle('v2-page', ['versions', 'versionDetail', 'requirements'].includes(current.name));
   setNav(current);
   syncVersionSelect(current);
   syncFunctionFilter(current);
@@ -1129,6 +1131,27 @@ function renderHistoryItems(container, data, kind) {
   }
 }
 
+// Calendar geometry uses Beijing calendar days, independent of task time-of-day.
+export function requirementCalendar(start, end, calendar = {}) {
+  const localDay = value => {
+    if (value === null || value === undefined || value === '') return null;
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return null;
+    const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+    return Date.parse(key + 'T00:00:00Z');
+  };
+  const first = localDay(start), last = localDay(end);
+  if (first === null || last === null || last < first || last - first > 3659 * 86400000) return [];
+  const days = [];
+  for (let at = first; at <= last; at += 86400000) {
+    const key = new Date(at).toISOString().slice(0, 10), weekday = new Date(at).getUTCDay();
+    const weekend = weekday === 0 || weekday === 6, entry = calendar[key];
+    const working = typeof entry === 'boolean' ? entry : entry?.working ?? !weekend;
+    days.push({ key, at, weekday, working, special: weekend && working });
+  }
+  return days;
+}
+
 async function renderRequirements(current, view) {
   setTitle('核心需求详情', '核心交付时间线与其他直属工作单');
   const versions = await loadVersions();
@@ -1195,11 +1218,13 @@ async function renderRequirements(current, view) {
       ['当前阶段', currentStage],
       ['数据异常', issueCount + ' 张']
     ];
-    for (const [label, value] of overviewFacts) {
+    const factGroups = [node('div', 'requirement-fact-group'), node('div', 'requirement-fact-group')];
+    for (const [index, [label, value]] of overviewFacts.entries()) {
       const fact = node('div', 'requirement-overview-fact');
       fact.append(node('span', 'note', label), node('b', null, value));
-      facts.append(fact);
+      factGroups[index % 2].append(fact);
     }
+    facts.append(...factGroups);
     overview.append(overviewMain, facts);
     wrap.append(overview);
 
@@ -1215,24 +1240,57 @@ async function renderRequirements(current, view) {
     } else {
       const timeline = node('div', 'requirement-timeline');
       const timelineInner = node('div', 'requirement-timeline-inner');
+      timeline.tabIndex = 0;
+      timeline.setAttribute('role', 'region');
+      timeline.setAttribute('aria-label', '按日工单时间线，可横向滚动；左侧工单信息固定');
+      const days = requirementCalendar(plannedStart, plannedEnd, management.calendar);
+      timelineInner.style.setProperty('--day-count', String(Math.max(1, days.length)));
       const axis = node('div', 'requirement-timeline-axis');
-      axis.append(node('div', null, '职能 / 工单 / 起止时间'));
+      axis.append(node('div', 'requirement-axis-corner', '职能 / 工单 / 起止时间'));
       const axisTrack = node('div', 'requirement-axis-track');
-      axisTrack.append(node('span', null, plannedStart ? formatDay(plannedStart) : '开始日期未知'), node('span', null, plannedEnd ? formatDay(plannedEnd) : '截止日期未知'));
+      if (days.length) {
+        const weeks = node('div', 'requirement-weeks'), dates = node('div', 'requirement-dates');
+        for (let index = 0; index < days.length;) {
+          let end = index + 1;
+          while (end < days.length && days[end].weekday !== 1) end++;
+          const week = node('span', null, 'W' + (weeks.childElementCount + 1) + ' · ' + days[index].key.slice(5) + '–' + days[end - 1].key.slice(5));
+          week.style.gridColumn = 'span ' + (end - index);
+          weeks.append(week); index = end;
+        }
+        for (const day of days) {
+          const cell = node('div', 'requirement-day' + (!day.working ? ' rest' : day.special ? ' special' : ''));
+          cell.append(node('strong', null, day.key.slice(8)), node('small', null, '日一二三四五六'[day.weekday]));
+          if (!day.working || day.special) cell.append(node('em', null, day.special ? '班' : '休'));
+          dates.append(cell);
+        }
+        axisTrack.append(weeks, dates);
+      } else {
+        axisTrack.append(node('span', 'requirement-range-note', '日期范围未完整配置或超过十年；请查看每张工单的起止时间'));
+      }
       axis.append(axisTrack);
       timelineInner.append(axis);
-      const range = Math.max(86400000, (plannedEnd ?? 0) - (plannedStart ?? 0));
+      const today = requirementCalendar(new Date(), new Date())[0]?.key;
+      const todayIndex = days.findIndex(day => day.key === today);
       for (const item of timelineItems) {
         const row = node('div', 'requirement-timeline-row');
         const label = node('div', 'requirement-timeline-label');
         label.append(node('b', null, (item.functionName || item.typeName || '职能待核对') + ' · ' + item.title), node('span', null, formatDay(item.plannedStartAt) + ' → ' + formatDay(item.plannedDueAt) + (item.planWorkingDays === null || item.planWorkingDays === undefined ? '' : ' · ' + item.planWorkingDays + ' 个工作日')));
         const track = node('div', 'requirement-track');
-        const start = dayValue(item.plannedStartAt);
-        const end = dayValue(item.plannedDueAt);
-        if (start !== null && end !== null && plannedStart !== null && plannedEnd !== null && end >= start) {
-          const bar = node('div', 'requirement-bar ' + (item.due?.overdue ? 'risk' : ['delivered', 'non_delivery'].includes(item.semantic) ? 'done' : 'active'), item.rawStatus || '状态未知');
-          bar.style.left = Math.max(0, (start - plannedStart) / range * 100) + '%';
-          bar.style.width = Math.max(4, (end - start + 86400000) / (range + 86400000) * 100) + '%';
+        const itemDays = requirementCalendar(item.plannedStartAt, item.plannedDueAt);
+        const startIndex = days.findIndex(day => day.key === itemDays[0]?.key);
+        const endIndex = days.findIndex(day => day.key === itemDays.at(-1)?.key);
+        for (const day of days) track.append(node('span', 'requirement-day-cell' + (!day.working ? ' rest' : day.special ? ' special' : '')));
+        if (todayIndex >= 0) {
+          const marker = node('span', 'requirement-today');
+          marker.style.left = ((todayIndex + .5) / days.length * 100) + '%';
+          marker.title = '今天（北京时间）：' + today;
+          track.append(marker);
+        }
+        if (startIndex >= 0 && endIndex >= startIndex) {
+          const bar = node('div', 'requirement-bar ' + (item.due?.overdue ? 'risk' : ['delivered', 'non_delivery'].includes(item.semantic) ? 'done' : item.semantic === 'not_started' ? 'pending' : item.semantic ? 'active' : 'unknown'), item.rawStatus || '状态未知');
+          bar.style.left = (startIndex / days.length * 100) + '%';
+          bar.style.width = ((endIndex - startIndex + 1) / days.length * 100) + '%';
+          bar.title = item.title + ' · ' + item.rawStatus + ' · ' + formatDay(item.plannedStartAt) + ' → ' + formatDay(item.plannedDueAt);
           track.append(bar);
         } else {
           track.append(node('div', 'requirement-unplanned', '周期未配置，不绘制时间条'));
@@ -1241,7 +1299,12 @@ async function renderRequirements(current, view) {
         timelineInner.append(row);
       }
       timeline.append(timelineInner);
-      timelineCard.append(timeline, node('div', 'requirement-timeline-legend', '绿色：终态 · 蓝色：进行中或待处理 · 红色：已逾期 · 日期缺失不绘制时间条'));
+      const legend = node('div', 'requirement-timeline-legend');
+      for (const [tone, text] of [['done', '终态'], ['active', '进行中 / 处理中'], ['pending', '未开始'], ['risk', '已逾期'], ['rest', '休息日（不计工作日）'], ['special', '特殊工作日（计工作日）']]) {
+        const entry = node('span'); entry.append(node('i', 'requirement-legend-dot ' + tone), node('span', null, text)); legend.append(entry);
+      }
+      legend.append(node('span', null, '灰线：今天（北京时间）；日期缺失或范围异常不绘制时间条'));
+      timelineCard.append(timeline, legend);
     }
     timelineSection.append(timelineCard);
     wrap.append(timelineSection);
