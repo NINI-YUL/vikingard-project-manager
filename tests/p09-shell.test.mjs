@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createApplication } from '../app/server.mjs';
-import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber, requirementCalendar } from '../app/public/shell.js';
+import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber, requirementCalendar, sortTimelineItems } from '../app/public/shell.js';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 
@@ -13,6 +13,19 @@ test('task numbers use the source project prefix without guessing or duplicating
   assert.equal(formatTaskNumber('OTHER-42', 'Viking'), 'OTHER-42');
   assert.equal(formatTaskNumber('107541', null), '107541（前缀待核对）');
   assert.equal(formatTaskNumber(null, 'Viking'), '无编号');
+});
+
+test('requirement timeline sorts configured due dates, then starts, with missing dates last', () => {
+  const items = [
+    { id: 'same-late-start', plannedDueAt: '2026-11-26', plannedStartAt: '2026-11-22' },
+    { id: 'missing-dates' },
+    { id: 'earlier-due', plannedDueAt: '2026-11-25', plannedStartAt: '2026-11-24' },
+    { id: 'same-early-start', plannedDueAt: '2026-11-26', plannedStartAt: '2026-11-20' },
+    { id: 'same-due-missing-start', plannedDueAt: '2026-11-26' }
+  ];
+  assert.deepEqual(sortTimelineItems(items).map(item => item.id), [
+    'earlier-due', 'same-early-start', 'same-late-start', 'same-due-missing-start', 'missing-dates'
+  ]);
 });
 
 test('P09 shell routes keep stable version and task objects', () => {
@@ -83,6 +96,8 @@ test('formal shell reads real versions, management facts, tasks and history', as
   assert.match(styles, /\.version-workspace/);
   assert.match(styles, /\.version-rail-item\.active/);
   assert.match(styles, /\.version-detail-layout/);
+  assert.match(styles, /\.version-detail-main/);
+  assert.match(styles, /\.requirement-picker/);
   assert.match(styles, /\.requirement-overview/);
   assert.match(styles, /\.requirement-timeline-row/);
 });

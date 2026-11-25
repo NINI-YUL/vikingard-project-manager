@@ -224,7 +224,8 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
 .version-kpis .metric-value.muted { color: var(--ink-3); }
 .version-kpis .metric-detail { margin-top: 4px; color: #737e91; font-size: 10px; line-height: 18px; }
 .version-detail-layout { display: grid; grid-template-columns: minmax(0, 65fr) minmax(0, 35fr); gap: 18px; align-items: start; margin-bottom: 18px; }
-.version-detail-layout > .card { margin-top: 0; }
+.version-detail-main, .version-detail-side { display: grid; gap: 18px; min-width: 0; align-content: start; }
+.version-detail-main > .card, .version-detail-side > .card { margin-top: 0; }
 .task-summary { display: flex; min-height: 32px; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
 .task-summary::-webkit-details-marker { display: none; }
 .task-summary::before { content: '▸'; color: var(--ink-3); }
@@ -246,7 +247,6 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
 .version-requirements .version-name { color: inherit; font-weight: inherit; }
 .version-requirements .version-name:hover { color: var(--primary); }
 .version-requirements .pill { max-width: 100%; white-space: normal; text-align: left; }
-.version-detail-side { min-width: 0; }
 .version-signal-list { display: grid; gap: 10px; margin-top: 12px; }
 .version-signal { padding-left: 10px; border-left: 2px solid #d6deeb; }
 .version-signal.red { border-left-color: #cc879b; }
@@ -263,6 +263,9 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
 .version-timeline-item::before { position: absolute; top: 6px; left: -18px; width: 6px; height: 6px; border: 1px solid #aebcd6; border-radius: 50%; background: var(--surface); content: ''; }
 .version-timeline-item b { color: #737e91; font-size: 10px; font-weight: 400; }
 .version-timeline-item .note { margin-top: 3px; color: #536078; font-size: 11px; line-height: 19px; }
+.requirement-toolbar { display: flex; justify-content: flex-end; margin: -2px 0 12px; }
+.requirement-picker { display: flex; align-items: center; gap: 8px; color: #737e91; font-size: 11px; }
+.requirement-picker .select { min-width: 220px; }
 .requirement-overview { display: grid; grid-template-columns: minmax(360px, 1.45fr) minmax(420px, 1fr); gap: 26px; align-items: center; padding: 24px 28px; }
 .requirement-title { margin: 3px 0 5px; color: var(--ink); font-size: 24px; line-height: 1.25; }
 .requirement-meta { color: var(--ink-3); font-size: 12px; }
@@ -503,6 +506,9 @@ body.v2-page {
   .version-kpis .metric-card { min-height: 90px; padding: 14px; }
   .version-kpis .metric-value { margin-top: 3px; font-size: 25px; }
   .version-detail-layout { gap: 14px; }
+  .requirement-toolbar { justify-content: stretch; }
+  .requirement-picker { width: 100%; }
+  .requirement-picker .select { min-width: 0; flex: 1; }
   .version-requirements table { min-width: 470px; }
   .version-page td { padding: 12px 8px; }
 }

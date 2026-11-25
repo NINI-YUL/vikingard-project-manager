@@ -28,10 +28,15 @@ const facts = [
   fact('root', 'requirement', null, { overdue: true, workingDays: 5 }),
   fact('ui', 'professional', 'UI界面', { overdue: true, workingDays: 1 }),
   fact('icon', 'professional', 'UI图标', { overdue: false, dueSoon: true, workingDaysUntil: 3, deadlineDate: '2026-11-26', today: '2026-11-23' }),
-  fact('aux', 'auxiliary', 'UI界面', { overdue: true, workingDays: 5 })
+  fact('aux', 'auxiliary', 'UI界面', { overdue: true, workingDays: 5 }),
+  fact('root-2', 'requirement', null, { overdue: false, workingDays: 5 }),
+  fact('server-2', 'professional', '服务端', { overdue: false, workingDays: 5 })
 ];
 facts[0].issues = ['结构待核对'];
 facts[0].key = '107541';
+facts[4].title = '第二个核心需求';
+facts[4].key = '107550';
+facts[5].parentSourceTaskId = 'root-2';
 function management(index) {
   const requirement = {
     id: 'root', title: '测试核心需求',
@@ -41,11 +46,19 @@ function management(index) {
       test: { calculable: false, complete: false, completedCount: 0, totalCount: 3, blockedTaskCount: 3, missingFunctions: [] }
     }
   };
+  const secondRequirement = {
+    id: 'root-2', title: '第二个核心需求',
+    stages: {
+      foundation: { calculable: true, complete: true, completedCount: 1, totalCount: 1, incompleteFunctions: [], missingFunctions: [], blockedTaskCount: 0 },
+      detail: { calculable: true, complete: true, completedCount: 1, totalCount: 1, incompleteFunctions: [], missingFunctions: [], blockedTaskCount: 0 },
+      test: { calculable: true, complete: true, completedCount: 1, totalCount: 1, incompleteFunctions: [], missingFunctions: [], blockedTaskCount: 0 }
+    }
+  };
   return {
     calendar: { '2026-11-21': { working: true }, '2026-11-23': { working: false } },
     versionId: versionIds[index],
     items: index ? [fact('server', 'professional', '服务端', { overdue: true, workingDays: 2 })] : facts,
-    requirements: index ? [] : [requirement],
+    requirements: index ? [] : [requirement, secondRequirement],
     progress: {
       coreRequirementCount: 1, foundation: { total: 1, completed: 0, percent: 0 },
       detail: { total: 1, completed: 0, percent: 0 }, test: { total: 1, completed: 0, percent: 0 },
@@ -130,7 +143,7 @@ let server, browser;
     assert.match(await page.locator('.version-detail-pane').innerText(), /风险需求\s*待接入/);
     assert.deepEqual(await page.locator('.version-kpis .metric-value').allTextContents(), ['1', '0', '待接入']);
     const stageAlignments = await page.locator('.version-requirements :is(th, td):nth-child(3), .version-requirements :is(th, td):nth-child(4)').evaluateAll(elements => elements.map(element => getComputedStyle(element).textAlign));
-    assert.deepEqual(stageAlignments, ['left', 'left', 'left', 'left']);
+    assert.deepEqual(stageAlignments, ['left', 'left', 'left', 'left', 'left', 'left']);
     assert.match(await page.locator('.version-requirements').innerText(), /0 \/ 2 · 未完成/);
     assert.match(await page.locator('.version-requirements').innerText(), /未完成职能：UI界面、客户端/);
     assert.doesNotMatch(await page.locator('#view').innerText(), /受阻工单|测试阶段：|需求 ID root/);
@@ -138,10 +151,21 @@ let server, browser;
     assert.equal(await page.locator('.version-tasks').evaluate(element => element.open), false);
     const position = await page.locator('.version-detail-layout').evaluate(element => {
       const bounds = selector => element.querySelector(selector).getBoundingClientRect();
-      const tasks = bounds('.version-tasks'), changes = bounds('.version-changes'), requirements = bounds('.version-requirements');
-      return { alignedRows: Math.abs(tasks.top - changes.top) < 1, alignedColumns: Math.abs(tasks.left - requirements.left) < 1, sideBySide: tasks.right <= changes.left };
+      const tasks = bounds('.version-tasks'), changes = bounds('.version-changes'), requirements = bounds('.version-requirements'), signals = bounds('.version-signal-list');
+      return { alignedRows: Math.abs(tasks.top - changes.top) < 1, alignedColumns: Math.abs(tasks.left - requirements.left) < 1, sideBySide: tasks.right <= changes.left, changesBelowSignals: changes.top > signals.bottom };
     });
-    assert.deepEqual(position, { alignedRows: true, alignedColumns: true, sideBySide: true });
+    assert.deepEqual(position, { alignedRows: false, alignedColumns: true, sideBySide: true, changesBelowSignals: true });
+    await page.locator('.version-requirements .version-name').first().click();
+    await page.locator('.requirement-overview').waitFor();
+    assert.match(page.url(), /#\/requirements\?version=11111111-1111-1111-1111-111111111111&requirement=root/);
+    assert.match(await page.locator('.requirement-title').innerText(), /测试核心需求/);
+    assert.equal(await page.locator('.requirement-picker select').count(), 1);
+    await page.locator('.requirement-picker select').selectOption('root-2');
+    await page.locator('.requirement-title').waitFor();
+    assert.match(page.url(), /requirement=root-2/);
+    assert.equal(await page.locator('.requirement-title').innerText(), '第二个核心需求');
+    await page.goto(origin + '#/versions/' + versionIds[0]);
+    await page.locator('.version-detail-pane').waitFor();
     assert.match(await page.locator('.version-detail-pane').innerText(), /当前管理信号/);
     assert.match(await page.locator('.version-detail-pane').innerText(), /最近变化/);
     assert.equal(await page.locator('body').evaluate(element => element.classList.contains('version-page')), true);

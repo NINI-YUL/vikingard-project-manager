@@ -117,6 +117,20 @@ function dayValue(value) {
   return Number.isNaN(date.getTime()) ? null : date.getTime();
 }
 
+export function sortTimelineItems(items) {
+  return items.map((item, index) => ({ item, index })).sort((a, b) => {
+    const dueA = dayValue(a.item.plannedDueAt), dueB = dayValue(b.item.plannedDueAt);
+    if (dueA === null && dueB !== null) return 1;
+    if (dueA !== null && dueB === null) return -1;
+    if (dueA !== null && dueB !== null && dueA !== dueB) return dueA - dueB;
+    const startA = dayValue(a.item.plannedStartAt), startB = dayValue(b.item.plannedStartAt);
+    if (startA === null && startB !== null) return 1;
+    if (startA !== null && startB === null) return -1;
+    if (startA !== null && startB !== null && startA !== startB) return startA - startB;
+    return a.index - b.index;
+  }).map(entry => entry.item);
+}
+
 function formatSync(version) {
   const name = SYNC_NAMES[version.syncStatus] ?? '同步状态未知';
   const cls = version.syncStatus === 'failed' ? 'bad' : version.syncStatus === 'running' ? 'warn' : version.syncStatus === 'succeeded' ? 'ok' : '';
@@ -750,6 +764,9 @@ async function renderVersionDetail(current, view) {
   hero.append(node('div', 'note', '版本'), node('h1', 'version-detail-title', version.displayName), node('div', 'sub', 'Teambition 同步起点：' + formatDate(version.syncStartAt)));
   detailPane.append(breadcrumbs, hero);
   const detailLayout = node('div', 'version-detail-layout');
+  const detailMain = node('div', 'version-detail-main');
+  const detailSide = node('div', 'version-detail-side');
+  detailLayout.append(detailMain, detailSide);
   let changesCard;
 
   if (context?.error) {
@@ -834,7 +851,8 @@ async function renderVersionDetail(current, view) {
       timeline.append(item);
     }
     changesCard.append(timeline);
-    detailLayout.append(reqCard, signalCard);
+    detailMain.append(reqCard);
+    detailSide.append(signalCard, changesCard);
   }
 
   const taskCard = node('details', 'card version-tasks');
@@ -859,8 +877,7 @@ async function renderVersionDetail(current, view) {
   taskHead.append(taskTitles, taskActions);
   taskBody.append(taskHead);
   taskCard.append(taskBody);
-  detailLayout.append(taskCard);
-  if (changesCard) detailLayout.append(changesCard);
+  detailMain.append(taskCard);
   detailPane.append(detailLayout);
 
   if (!tasks) {
@@ -1184,14 +1201,28 @@ async function renderRequirements(current, view) {
   const breadcrumbs = node('div', 'breadcrumbs');
   breadcrumbs.append(link('行动中心', '#/action'), node('span', null, '/'), link(version.displayName, versionHash(version.id)), node('span', null, '/'), node('b', null, requirement?.title || '核心需求'));
   const wrap = node('div');
-  wrap.append(breadcrumbs);
+  const requirementToolbar = node('div', 'requirement-toolbar');
+  const requirementPicker = node('label', 'requirement-picker');
+  requirementPicker.append(node('span', null, '核心需求'));
+  const requirementSelect = node('select', 'select');
+  for (const candidate of management.requirements) {
+    const option = node('option', null, candidate.title || '未命名需求');
+    option.value = candidate.id;
+    option.selected = candidate.id === requirement?.id;
+    requirementSelect.append(option);
+  }
+  requirementSelect.disabled = management.requirements.length === 0;
+  requirementSelect.addEventListener('change', event => navigate(requirementsHash(version.id, event.target.value)));
+  requirementPicker.append(requirementSelect);
+  requirementToolbar.append(requirementPicker);
+  wrap.append(breadcrumbs, requirementToolbar);
 
   if (current.requirementId && !requirement) {
     wrap.append(errorCard('当前版本计算事实中没有该需求。', () => navigate(requirementsHash(version.id))));
   } else if (requirement) {
     const root = management.items.find(item => item.id === requirement.id);
     const direct = root ? management.items.filter(item => item.parentSourceTaskId === root.sourceTaskId) : [];
-    const timelineItems = direct.filter(item => item.kind === 'professional' || item.typeName?.includes('测试'));
+    const timelineItems = sortTimelineItems(direct.filter(item => item.kind === 'professional' || item.typeName?.includes('测试')));
     const otherItems = direct.filter(item => !timelineItems.includes(item));
     const plannedStarts = direct.map(item => dayValue(item.plannedStartAt)).filter(value => value !== null);
     const plannedEnds = direct.map(item => dayValue(item.plannedDueAt)).filter(value => value !== null);
