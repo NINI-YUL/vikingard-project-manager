@@ -798,7 +798,11 @@ async function renderVersionDetail(current, view) {
     reqHead.append(reqTitles, reqActions);
     reqCard.append(reqHead);
     const reqRows = management.requirements.map(requirement => {
-      const row = node('tr');
+      const row = node('tr', 'version-requirement-row');
+      row.addEventListener('click', event => {
+        if (event.target.closest('a, button, input, select')) return;
+        navigate(requirementsHash(version.id, requirement.id));
+      });
       const name = node('td');
       const root = management.items.find(item => item.id === requirement.id);
       name.append(link(requirement.title || '未命名需求', requirementsHash(version.id, requirement.id), 'version-name'), node('div', 'cell-note task-number', formatTaskNumber(root?.key, version.uniqueIdPrefix)));
@@ -1201,6 +1205,7 @@ async function renderRequirements(current, view) {
   const breadcrumbs = node('div', 'breadcrumbs');
   breadcrumbs.append(link('行动中心', '#/action'), node('span', null, '/'), link(version.displayName, versionHash(version.id)), node('span', null, '/'), node('b', null, requirement?.title || '核心需求'));
   const wrap = node('div');
+  const requirementHeader = node('div', 'requirement-header');
   const requirementToolbar = node('div', 'requirement-toolbar');
   const requirementPicker = node('label', 'requirement-picker');
   requirementPicker.append(node('span', null, '核心需求'));
@@ -1215,7 +1220,8 @@ async function renderRequirements(current, view) {
   requirementSelect.addEventListener('change', event => navigate(requirementsHash(version.id, event.target.value)));
   requirementPicker.append(requirementSelect);
   requirementToolbar.append(requirementPicker);
-  wrap.append(breadcrumbs, requirementToolbar);
+  requirementHeader.append(breadcrumbs, requirementToolbar);
+  wrap.append(requirementHeader);
 
   if (current.requirementId && !requirement) {
     wrap.append(errorCard('当前版本计算事实中没有该需求。', () => navigate(requirementsHash(version.id))));
@@ -1361,33 +1367,6 @@ async function renderRequirements(current, view) {
     wrap.append(otherSection);
   }
 
-  const card = node('div', 'card requirement-list');
-  const head = node('div', 'section-head');
-  const titles = node('div');
-  titles.append(node('div', 'section-title', '核心需求阶段'), node('div', 'note', '当前版本共 ' + management.requirements.length + ' 个核心需求'));
-  const actions = node('div', 'section-actions');
-  actions.append(node('span', 'pill blue', management.requirements.length + ' 个'));
-  head.append(titles, actions);
-  card.append(head);
-  const rows = management.requirements.map(requirement => {
-    const row = node('tr');
-    const name = node('td');
-    name.append(link(requirement.title || '未命名需求', requirementsHash(version.id, requirement.id), 'version-name'), node('div', 'cell-note task-number', formatTaskNumber(management.items.find(item => item.id === requirement.id)?.key, version.uniqueIdPrefix)));
-    row.append(name);
-    for (const key of ['foundation', 'detail', 'test']) {
-      const state = requirementStage(requirement.stages[key]);
-      const cell = node('td');
-      cell.append(node('span', 'pill ' + state.cls, state.text));
-      appendStageDetails(cell, requirement.stages[key]);
-      row.append(cell);
-    }
-    const action = node('td');
-    action.append(link('查看需求', requirementsHash(version.id, requirement.id), 'row-link'));
-    row.append(action);
-    return row;
-  });
-  card.append(buildTable('核心需求列表', ['需求', '基础流程', '细节完整', '测试阶段', '操作'], rows, '当前版本没有可识别的核心需求。'));
-  wrap.append(card);
   view.replaceChildren(wrap);
 }
 
