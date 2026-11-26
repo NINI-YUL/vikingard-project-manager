@@ -53,7 +53,7 @@ try {
     await pool.query('GRANT USAGE ON SEQUENCE audit_events_id_seq TO vikingpm_app');
     await pool.query('GRANT SELECT ON schema_migrations TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT,UPDATE ON source_projects,managed_versions,tracking_periods,source_sync_states,source_sync_runs,work_items,source_bindings TO vikingpm_app');
-    await pool.query('GRANT SELECT,INSERT,UPDATE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT,UPDATE,DELETE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON plan_baselines TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON plan_baselines FROM vikingpm_app');
     await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback,notification_jobs TO vikingpm_app');
@@ -69,7 +69,7 @@ try {
     pool = poolFor(config); stage = 'migrate';
     const count = await migrate(pool);
     await pool.query('GRANT SELECT,INSERT,UPDATE ON source_projects,managed_versions,tracking_periods,source_sync_states,source_sync_runs,work_items,source_bindings TO vikingpm_app');
-    await pool.query('GRANT SELECT,INSERT,UPDATE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
+    await pool.query('GRANT SELECT,INSERT,UPDATE,DELETE ON management_state,management_rules,calendar_days,status_mappings,function_exemptions TO vikingpm_app');
     await pool.query('GRANT SELECT,INSERT ON plan_baselines TO vikingpm_app');
     await pool.query('REVOKE UPDATE,DELETE ON plan_baselines FROM vikingpm_app');
     await pool.query('GRANT SELECT,INSERT,UPDATE ON feedback_sources,executor_identity_mappings,feedback_records,current_feedback,notification_jobs TO vikingpm_app');

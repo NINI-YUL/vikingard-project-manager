@@ -667,6 +667,8 @@ body.v2-page {
 .config-page .config-row-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .config-page .config-v2-dialog { width: min(840px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid #e1e7f1; border-radius: 12px; box-shadow: 0 24px 80px #26344d33; color: #465064; background: #fff; }
 .config-page .config-v2-dialog::backdrop { background: #24304440; }
+.config-page #mg-review { z-index: 10; }
+.config-page #mg-review-error { margin: 14px 22px 0; }
 .config-page .config-v2-dialog > form { padding: 18px 22px; }
 .config-page .config-v2-dialog > h2 { padding: 18px 22px 0; }
 .config-page .config-v2-dialog form > label, .config-page .config-v2-dialog form > .field { display: block; margin: 14px 0 6px; font-size: 12px; }

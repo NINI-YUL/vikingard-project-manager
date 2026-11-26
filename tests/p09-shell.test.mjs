@@ -199,3 +199,13 @@ test('configuration and acceptance share one management form template and keep l
     assert.doesNotMatch(html, /<!-- management-forms -->/);
   }
 });
+
+test('configuration save errors stay visible in the top review dialog', async () => {
+  const template = await read('app/public/management-forms.html');
+  const ui = await read('app/public/management-ui.js');
+  const styles = await read('app/public/shell.css');
+  assert.match(template, /id="mg-review-error"[^>]*role="alert"/);
+  assert.match(ui, /reviewError/);
+  assert.match(ui, /error\.status===503/);
+  assert.match(styles, /#mg-review-error/);
+});
