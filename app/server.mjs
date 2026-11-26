@@ -116,7 +116,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         const value = await body(req);
         if (Object.keys(value).some(k=>!['projectId','versionId','ownerId','reason'].includes(k)) || !/^[a-f0-9]{24}$/.test(value.projectId ?? '') || !/^[a-f0-9]{24}$/.test(value.versionId ?? '') || typeof value.reason!=='string' || !value.reason.trim() || value.reason.length>500) throw new Denied(400,'请核对项目、迭代和纳入原因');
         if (!source) throw new Denied(503,'来源读取尚未配置');
-        const verified = await source.getVersion(value.projectId,value.versionId);
+        const verified = await (source.getSelectableVersion ? source.getSelectableVersion(value.projectId,value.versionId) : source.getVersion(value.projectId,value.versionId));
         return json(res,201,await enrollVersion(pool,{...verified,corpId:config.dingtalk.corpId,ownerId:value.ownerId,reason:value.reason},actor.id));
       }
       const taskTarget = path.match(/^\/api\/versions\/([0-9a-f-]{36})\/tasks$/i);

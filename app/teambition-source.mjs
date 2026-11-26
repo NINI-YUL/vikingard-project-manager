@@ -69,23 +69,25 @@ export function createTeambitionSource(config, query = createCliQuery(config.cli
     }
     throw new Error('来源迭代分页未完成');
   }
-  async function getVersion(projectId, versionId) {
+  async function getVersion(projectId, versionId, {activeOnly=false}={}) {
     const project=await projectFor(projectId);
     const versions = rows(await query('sprint-query',['--project-id',projectId,'--id',versionId]));
-    const version = versions.find(v => v.id === versionId && v.projectId === projectId);
+    const version = versions.find(v => (v.id ?? v._id) === versionId && (v.projectId ?? v._projectId) === projectId);
     if (versions.length !== 1 || !version || typeof version.name !== 'string') throw new Error('来源迭代不匹配');
-    return {projectId,versionId,projectName:project.name,versionName:version.name,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null};
+    if (activeOnly && version.status !== 'active') throw new Error('只能选择进行中的来源迭代');
+    return {projectId,versionId,projectName:project.name,versionName:version.name,status:version.status,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null};
   }
   async function listVersions() {
     const project=await projectFor(config.projectId);
     const versions=await listRows('sprint-query',['--project-id',config.projectId]);
     const seen=new Set();
-    return versions.filter(version=>version?.projectId===config.projectId&&id(version.id)&&typeof version.name==='string'&&version.name.trim()&&!seen.has(version.id)&&seen.add(version.id)).map(version=>({projectId:config.projectId,versionId:version.id,projectName:project.name,versionName:version.name,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null}));
+    return versions.map(version=>({version,versionId:version?.id ?? version?._id,versionProjectId:version?.projectId ?? version?._projectId})).filter(({version,versionId,versionProjectId})=>versionProjectId===config.projectId&&version.status==='active'&&id(versionId)&&typeof version.name==='string'&&version.name.trim()&&!seen.has(versionId)&&seen.add(versionId)).map(({version,versionId})=>({projectId:config.projectId,versionId,projectName:project.name,versionName:version.name,status:version.status,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null}));
   }
   return {
     projectId:config.projectId,
     listVersions,
     getVersion,
+    getSelectableVersion:(projectId,versionId)=>getVersion(projectId,versionId,{activeOnly:true}),
     async read({projectId,sourceVersionId,knownTaskIds=[]}) {
       const project=await getVersion(projectId,sourceVersionId);
       const args = ['--project-id',projectId];
