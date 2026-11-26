@@ -756,3 +756,34 @@ body.v2-page {
 @media(max-width:1050px) { .config-page .cal-layout { grid-template-columns: 1fr; } }
 @media(max-width:700px) { .config-page .cal-body { padding: 12px; } .config-page .cal-panel .config-v2-section-head { padding: 14px; } .config-page .cal-day { height: 70px; padding: 5px; } .config-page .cal-day .cal-label { font-size: 9px; padding: 1px 2px; } .config-page .cal-aside { grid-template-columns: 1fr; }  }
 @media(max-width:430px) { .config-page .cal-weekdays, .config-page .cal-days { gap: 3px; } .config-page .cal-day { height: 62px; } .config-page .cal-calendar-head h3 .note { display: block; margin: 3px 0 0; } .config-page .cal-month-actions { width: 100%; } .config-page .cal-month-actions .button { flex: 1; } }
+
+/* V2 version-scope table: hierarchy, status semantics and responsive density. */
+.config-page .version-scope-panel .config-v2-section-head { padding: 17px 18px; }
+.config-page .version-scope-panel .config-v2-section-head h2 { font-size: 14px; font-weight: 600; color: #344054; }
+.config-page .version-scope-panel .config-v2-section-body { padding: 0 18px 16px; }
+.config-page .version-scope-table-wrap { width: 100%; max-width: 100%; overflow-x: auto; border: 0; border-radius: 5px; }
+.config-page .version-scope-table-wrap:focus-visible { outline: 2px solid #4c6cda; outline-offset: 3px; }
+.config-page .version-scope-table { width: 100%; min-width: 960px; table-layout: fixed; }
+.config-page .version-scope-table th { padding: 12px 16px; color: #687185; background: #f8fafc; border-bottom: 1px solid #e9edf4; font-size: 11px; font-weight: 500; line-height: 1.7; white-space: normal; }
+.config-page .version-scope-table th:nth-child(1) { width: 15%; }
+.config-page .version-scope-table th:nth-child(2) { width: 12%; }
+.config-page .version-scope-table th:nth-child(3) { width: 14%; }
+.config-page .version-scope-table th:nth-child(4) { width: 12%; }
+.config-page .version-scope-table th:nth-child(5) { width: 15%; }
+.config-page .version-scope-table th:nth-child(6) { width: 17%; }
+.config-page .version-scope-table th:nth-child(7) { width: 10%; }
+.config-page .version-scope-table th:nth-child(8) { width: 15%; }
+.config-page .version-scope-table td { padding: 17px 16px; color: #465064; border-bottom: 1px solid #edf0f5; font-size: 12px; line-height: 1.8; vertical-align: middle; overflow-wrap: anywhere; }
+.config-page .version-scope-table tr:last-child td { border-bottom: 0; }
+.config-page .version-scope-table tbody tr:hover { background: #fafbfe; }
+.config-page .version-scope-table td:first-child b { display: block; color: #344054; font-size: 13px; font-weight: 600; }
+.config-page .version-scope-table .status { font-size: 11px; line-height: 1.8; }
+.config-page .version-scope-table .status::before { width: 6px; height: 6px; }
+.config-page .version-scope-table .pill { min-height: 0; padding: 2px 7px; border-radius: 5px; font-size: 10px; font-weight: 500; line-height: 1.6; }
+.config-page .version-scope-table .config-row-actions { gap: 10px; }
+.config-page .version-scope-table .config-row-actions .row-link { font-size: 12px; white-space: nowrap; }
+@media(max-width:700px) {
+  .config-page .version-scope-panel .config-v2-section-body { padding: 0 14px 14px; }
+  .config-page .version-scope-table { min-width: 960px; }
+  .config-page .version-scope-table td { padding: 14px 12px; }
+}

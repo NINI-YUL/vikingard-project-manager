@@ -488,6 +488,16 @@ const calendarFixture = {
     assert.match(await page.locator('#message').innerText(), /同步 6 张工单/);
     await page.getByRole('link', { name: '配置库', exact: true }).click();
     await page.locator('.config-layout').waitFor();
+    assert.equal(await page.locator('.version-scope-panel').count(), 1);
+    assert.equal(await page.locator('.version-scope-table').count(), 1);
+    assert.match(await page.locator('.version-scope-panel').innerText(), /已纳入/);
+    assert.equal(await page.locator('.version-scope-table .status.ok').count(), 2);
+    for (const width of [1440, 768, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, width + 'px version scope has no page overflow');
+      assert.equal(await page.locator('.version-scope-table-wrap').evaluate(element => element.scrollWidth >= element.clientWidth), true, width + 'px version scope table keeps bounded scroll');
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('button', { name: '工作日历', exact: true }).click();
     assert.equal(await page.locator('.cal-layout').count(), 1);
     assert.equal(await page.locator('.cal-legend').getByText('工作日', { exact: true }).count(), 1);

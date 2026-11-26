@@ -1604,6 +1604,7 @@ async function renderConfig(view, current) {
   mappingDetails.removeChild(projectSelect); mappingDetails.removeChild(workflowSelect);
   mappingDetails.removeChild(projectLabel); mappingDetails.removeChild(workflowLabel); mappingDetails.remove();
   const versionsPanel = panel('日常管理版本', '仅显示已批准来源；纳入和同步只读取 Teambition，保留当前事实。');
+  versionsPanel.box.classList.add('version-scope-panel');
   pages['version/scope'] = versionsPanel.box;
   const rulesPage = node('div', 'config-rules-workspace');
   const objectPanel = panel('配置层级', '选择作用范围，查看配置或在一个窗口内编辑。');
@@ -1807,16 +1808,32 @@ async function renderConfig(view, current) {
     try {
       const [versions, status] = await Promise.all([api('/api/versions'), api('/api/status').catch(() => null)]);
       const lifecycleNames = { enrolled: '已纳入', stopped: '停止纳入', ended: '已结束' };
+      const lifecycleTone = { enrolled: 'green', stopped: 'amber', ended: 'amber' };
       const rows = versions.map(version => {
-        const row = node('tr');
-        row.append(node('td', null, version.displayName), node('td', null, version.ownerName || '待确认'), node('td', null, formatDate(version.syncStartAt)), node('td', null, lifecycleNames[version.lifecycle ?? 'enrolled'] || '状态待核对'), node('td', null, (SYNC_NAMES[version.syncStatus] || '同步状态未知') + ' · ' + formatDate(version.lastSuccessAt)), node('td', null, !status ? '调度状态读取失败' : !status.pollingEnabled ? '自动轮询未启用' : !version.ownerConfirmed ? '负责人待确认，自动同步暂停' : '下次检查：' + formatDate(version.nextDueAt)), node('td', null, version.bindingVerifiedAt ? '已核对' : '待首次核对'));
+        const row = node('tr', 'version-scope-row');
+        const versionCell = node('td');
+        versionCell.append(node('b', null, version.displayName));
+        const ownerCell = node('td');
+        ownerCell.append(node('div', null, version.ownerName || '待确认'));
+        if (!version.ownerConfirmed) ownerCell.append(node('div', 'note', '负责人身份待确认'));
+        const lifecycleCell = node('td');
+        lifecycleCell.append(node('span', 'pill ' + (lifecycleTone[version.lifecycle ?? 'enrolled'] || 'amber'), lifecycleNames[version.lifecycle ?? 'enrolled'] || '状态待核对'));
+        const syncCell = node('td');
+        syncCell.append(statusNode(version), node('div', 'note', formatDate(version.lastSuccessAt)));
+        const automationCell = node('td');
+        automationCell.append(node('div', null, !status ? '调度状态读取失败' : !status.pollingEnabled ? '自动轮询未启用' : !version.ownerConfirmed ? '负责人待确认' : '自动轮询已启用'), node('div', 'note', status?.pollingEnabled && version.ownerConfirmed ? '下次检查：' + formatDate(version.nextDueAt) : '需要人工核对后恢复'));
+        const bindingCell = node('td');
+        bindingCell.append(node('span', 'pill ' + (version.bindingVerifiedAt ? 'green' : 'amber'), version.bindingVerifiedAt ? '已核对' : '待首次核对'));
         const actions = node('td', 'config-row-actions'); actions.append(link('查看任务', versionHash(version.id), 'row-link'));
         if (editable && (!version.lifecycle || version.lifecycle === 'enrolled')) {
           const sync = button('读取来源并同步', async () => { sync.disabled = true; try { await syncOne(version); } finally { sync.disabled = false; } }, 'button small'); actions.append(sync);
         }
-        row.append(actions); return row;
+        row.append(versionCell, ownerCell, node('td', null, formatDate(version.syncStartAt)), lifecycleCell, syncCell, automationCell, bindingCell, actions); return row;
       });
-      versionsPanel.body.replaceChildren(buildTable('版本范围', ['版本', '负责人', 'Teambition 同步起点', '本系统状态', '最近同步', '自动同步', '来源绑定', '操作'], rows, '尚未纳入版本。'), node('p', 'note', '来源未提供的 TB 计划和状态不推测填写。移除、停止、恢复及结束管理尚无正式接口，本页保留当前事实。'));
+      const table = buildTable('版本范围', ['版本', '负责人', 'Teambition 同步起点', '本系统状态', '最近同步', '自动同步', '来源绑定', '操作'], rows, '尚未纳入版本。');
+      table.classList.add('version-scope-table-wrap');
+      table.querySelector('table')?.classList.add('version-scope-table');
+      versionsPanel.body.replaceChildren(table, node('p', 'note', '来源未提供的 TB 计划和状态不推测填写。移除、停止、恢复及结束管理尚无正式接口，本页保留当前事实。'));
     } catch (error) { versionsPanel.body.replaceChildren(errorCard(error.message, showVersions)); }
   }
   async function syncOne(version) {
