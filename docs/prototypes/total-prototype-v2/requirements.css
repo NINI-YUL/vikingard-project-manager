@@ -93,3 +93,23 @@ body.req-d-style .req-recipient-node .excluded{color:#737e91}
 @media(max-width:760px){body.req-d-style .shell .detail-page{padding:14px 12px 22px}body.req-d-style .shell .req-overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:16px}body.req-d-style .shell .req-overview>div:first-child{grid-column:1/-1}body.req-d-style .shell .req-fact{padding-left:0;border-left:0;border-top:1px solid #edf0f5;padding-top:12px;gap:14px}body.req-d-style .shell .req-overview h1{font-size:21px}body.req-d-style .shell .req-meta{font-size:11px}body.req-d-style .shell .req-section-title{margin-top:19px;font-size:13px;align-items:flex-start}body.req-d-style .shell .gantt-v2{padding:12px}body.req-d-style .shell .gantt-v2-header,body.req-d-style .shell .gantt-v2-row{grid-template-columns:210px minmax(0,1fr)}body.req-d-style .shell .gantt-v2-label{padding:9px 10px}body.req-d-style .shell .gantt-v2-label div{white-space:normal;overflow:visible;line-height:19px}body.req-d-style .shell .gantt-v2-label small{font-size:10px}body.req-d-style .shell .work-grid{grid-template-columns:1fr;gap:10px}body.req-d-style .shell .work-card{min-height:0;padding:14px}body.req-d-style .shell .work-foot{flex-wrap:wrap}body.req-d-style .drawer{width:96vw;padding:18px}body.req-d-style .drawer .detail-grid{grid-template-columns:1fr 1fr}body.req-d-style .req-recipient-head,body.req-d-style .req-recipient-body{padding:16px}body.req-d-style .req-recipient-head{gap:12px}body.req-d-style .req-recipient-head h2{font-size:17px}}
 /* Unscheduled text spans the date grid instead of being squeezed into one day. */
 body.req-d-style .shell .gantt-v2-unplanned{grid-column:1/-1;min-height:58px;line-height:20px;white-space:normal}
+/* Actual execution strip: same tone as estimate bar, positioned below it. */
+body.req-d-style .shell .gantt-v2-row{min-height:76px}
+body.req-d-style .shell .gantt-v2-label{padding-top:7px;padding-bottom:7px}
+body.req-d-style .shell .gantt-v2-label small{display:block}
+body.req-d-style .shell .gantt-actual-label{color:#98a2b3}
+body.req-d-style .shell .gantt-actual-label.is-active{color:#687185}
+body.req-d-style .shell .gantt-v2-actual{position:absolute;z-index:4;top:51px;height:4px;border-radius:3px;min-width:2px}
+body.req-d-style .shell .gantt-v2-actual.done{background:#70a98d}
+body.req-d-style .shell .gantt-v2-actual.doing{background:#6d88c2}
+body.req-d-style .shell .gantt-v2-actual.pending{background:#98a2b3}
+body.req-d-style .shell .gantt-v2-actual.blocked{background:#c06c83}
+body.req-d-style .shell .gantt-v2-actual i{position:absolute;right:-4px;top:-2px;width:8px;height:8px;border-radius:50%;background:inherit;border:2px solid #fff;box-sizing:border-box}
+body.req-d-style .shell .gantt-toolbar{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px 16px;border-bottom:1px solid #edf0f5;background:#fff}
+body.req-d-style .shell .gantt-toolbar>b,body.req-d-style .shell .gantt-toolbar strong{font-size:12px;color:#344054}
+body.req-d-style .shell .gantt-toolbar .note{margin-left:10px;font-size:10px;color:#98a2b3}
+body.req-d-style .shell .gantt-demo-controls{display:flex;align-items:center;gap:8px;white-space:nowrap}
+body.req-d-style .shell .gantt-demo-controls .ghost{min-height:30px;padding:4px 9px;font-size:11px;border-radius:6px}
+body.req-d-style .shell .gantt-v2-track:after{left:var(--today-left,68.75%)}
+body.req-d-style .shell .gantt-legend .legend-line{display:inline-block;width:18px;height:4px;border-radius:3px;vertical-align:middle}
+@media(max-width:760px){body.req-d-style .shell .gantt-toolbar{align-items:flex-start;flex-direction:column;gap:8px;padding:12px}.req-d-style .shell .gantt-toolbar .note{display:block;margin:3px 0 0}.req-d-style .shell .gantt-v2-row{min-height:82px}}
