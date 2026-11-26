@@ -535,7 +535,15 @@ const calendarFixture = {
     await page.screenshot({ path: path.join(output, 'p09-config.png'), fullPage: true });
     await page.getByRole('button', { name: '规则设置', exact: true }).click();
     assert.equal(await page.locator('#mg-rules-form').isVisible(), false);
-    assert.match(await page.locator('.config-rule-summary').innerText(), /进度判断配置/);
+    assert.match(await page.locator('.config-rule-summary').innerText(), /进度完成条件/);
+    assert.equal(await page.locator('.config-rule-scope-buttons button').count(), 3);
+    assert.equal(await page.locator('.config-rule-scope-buttons button[aria-pressed="true"]').innerText(), '系统默认');
+    await page.getByRole('button', { name: '版本覆盖', exact: true }).click();
+    assert.equal(await page.locator('#mg-scope').inputValue(), 'version');
+    assert.equal(await page.locator('.config-rule-scope-buttons button[aria-pressed="true"]').innerText(), '版本覆盖');
+    await page.getByRole('button', { name: '系统默认', exact: true }).click();
+    assert.equal(await page.locator('#mg-scope').inputValue(), 'system');
+    await page.screenshot({ path: path.join(output, 'p09-rules-v2.png'), fullPage: true });
     await page.getByRole('button', { name: '编辑配置', exact: true }).click();
     await page.locator('[data-rule-field="foundation"]').getByLabel('客户端', { exact: true }).uncheck();
     await page.getByRole('dialog', { name: '编辑配置', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();

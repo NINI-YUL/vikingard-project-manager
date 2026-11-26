@@ -1609,9 +1609,26 @@ async function renderConfig(view, current) {
   const rulesPage = node('div', 'config-rules-workspace');
   const objectPanel = panel('配置层级', '选择作用范围，查看配置或在一个窗口内编辑。');
   const scopeControls = node('div', 'config-rule-controls');
-  for (const [label, select] of [[ruleForm.querySelector('[for="mg-scope"]'), control('mg-scope')], [versionLabel, control('mg-version')], [ruleForm.querySelector('[for="mg-requirement"]'), control('mg-requirement')]]) {
+  scopeControls.classList.add('config-rule-object-controls');
+  const scopeSelect = control('mg-scope');
+  const scopeField = node('div', 'field config-rule-scope-field');
+  const scopeLabel = ruleForm.querySelector('[for="mg-scope"]');
+  scopeField.append(scopeLabel);
+  const scopeButtons = node('div', 'config-rule-scope-buttons');
+  const syncScopeButtons = () => scopeButtons.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.scope === scopeSelect.value)));
+  for (const option of scopeSelect.options) {
+    const button = node('button', null, option.textContent);
+    button.type = 'button'; button.dataset.scope = option.value;
+    button.onclick = () => { scopeSelect.value = option.value; scopeSelect.dispatchEvent(new Event('change', { bubbles: true })); syncScopeButtons(); };
+    scopeButtons.append(button);
+  }
+  scopeSelect.classList.add('config-rule-native-select');
+  scopeSelect.addEventListener('change', syncScopeButtons);
+  scopeField.append(scopeButtons, scopeSelect); scopeControls.append(scopeField);
+  for (const [label, select] of [[versionLabel, control('mg-version')], [ruleForm.querySelector('[for="mg-requirement"]'), control('mg-requirement')]]) {
     const field = node('div', 'field'); field.append(label, select); scopeControls.append(field);
   }
+  syncScopeButtons();
   objectPanel.body.append(scopeControls, control('mg-scope-note'));
   const editRules = button('编辑配置', () => {
     control('mg-scope').dispatchEvent(new Event('change'));
@@ -1720,19 +1737,32 @@ async function renderConfig(view, current) {
       const inherit = panel(currentScope === 'version' ? '继承系统默认' : '继承上层配置', '当前对象尚未设置特殊配置。未修改的配置项始终继承上层；点击编辑可从当前生效值开始调整。');
       ruleSummary.append(inherit.box); return;
     }
-    const progress = panel('进度判断配置', '先确认基础流程，再累计细节，最后核对全部交付内容。');
-    for (const [key, title, note] of [['foundation', '基础流程阶段', '所选职能工单全部处理完成，即可开始验收测试。'], ['detail', '细节完整阶段', '基础流程 + 以下职能全部处理完成，即开发内网全完成。']]) {
+    const progress = panel('进度完成条件', '先确认基础流程，再累计细节，最后核对全部交付内容。');
+    for (const [key, title, note] of [['foundation', '基础流程完成条件', '所选职能的工单全部处理完成后，可开始验收测试。'], ['detail', '细节完整完成条件', '基础流程与以下职能的工单全部处理完成后，开发内网才算全部完成。']]) {
       const row = node('div', 'config-rule-stage');
-      row.append(node('h3', null, title), node('p', 'note', note), node('span', 'pill blue', sourceNames[currentRules[key].source]));
+      const main = node('div', 'config-rule-stage-main');
+      const source = node('span', 'pill blue config-rule-source', sourceNames[currentRules[key].source]);
       const chips = node('div', 'requirement-tags');
       for (const value of currentRules[key].value) chips.append(node('span', 'pill', value));
-      row.append(chips); progress.body.append(row);
+      main.append(node('h3', null, title), node('p', 'note', note), chips);
+      row.append(main, source); progress.body.append(row);
     }
-    const fixed = node('div', 'config-rule-stage');
-    fixed.append(node('h3', null, '测试阶段'), node('p', 'note', '固定检查全部应处理后代工单；非交付终态不阻塞完成。数据缺失或状态未知不算完成，阶段完成不代表上线。'));
-    progress.body.append(fixed);
-    const follow = panel('进度采集与风险配置', '开发关注阈值只提示复核，不表示超载或绩效。');
-    follow.body.append(node('h3', null, '进度采集'), node('span', 'pill blue', sourceNames[currentRules.schedules.source]), node('p', null, currentRules.schedules.value.map(point => '周' + ['','一','二','三','四','五','六','日'][point.day] + ' ' + point.time).join('、')), node('p', 'note', '北京时间 · 仅在公司工作日执行；休息日跳过，不自动补发。'), node('h3', null, '开发关注阈值'), node('p', null, '同一执行者跨全部活跃版本的核心专业子单计划区间重叠达到 ' + currentRules.concurrency.value + ' 张时提示关注。版本与需求不能单独覆盖。'));
+    const fixed = node('div', 'config-rule-stage config-rule-fixed');
+    const fixedMain = node('div', 'config-rule-stage-main');
+    const fixedValues = node('div', 'requirement-tags');
+    for (const value of ['核心专业子单', '测试总单及缺陷', '验收总单及子任务', '辅助子单及其他后代']) fixedValues.append(node('span', 'pill', value));
+    fixedMain.append(node('h3', null, '测试阶段完成条件 · 固定规则'), fixedValues, node('p', 'note', '全部应处理的后代工单满足终态要求后，才可进入上线确认；不代表已经上线。'), node('p', 'note config-rule-footnote', '非交付终态单独标记，不计实际交付。所选职能没有工单时待负责人确认不适用；未知状态或数据缺失不视为完成。'));
+    fixed.append(fixedMain); progress.body.append(fixed);
+    const follow = panel('进度采集与开发关注', '开发关注阈值只提示复核，不表示超载或绩效。');
+    const schedule = node('div', 'config-rule-setting');
+    const scheduleHead = node('div', 'config-rule-setting-head');
+    scheduleHead.append(node('h3', null, '进度采集时间'), node('span', 'pill blue config-rule-source', sourceNames[currentRules.schedules.source]));
+    schedule.append(scheduleHead, node('p', null, currentRules.schedules.value.map(point => '周' + ['','一','二','三','四','五','六','日'][point.day] + ' ' + point.time).join('、')), node('p', 'note', '北京时间，仅在公司工作日执行。调休和特殊工作日也须命中所选星期、时刻；休息日跳过，不补发。'));
+    const concurrency = node('div', 'config-rule-setting');
+    const concurrencyHead = node('div', 'config-rule-setting-head');
+    concurrencyHead.append(node('h3', null, '开发关注阈值'), node('span', 'pill blue config-rule-source', '全部活跃版本'));
+    concurrency.append(concurrencyHead, node('p', null, '同一执行者的核心专业子单计划区间重叠达到 ' + currentRules.concurrency.value + ' 张时提示关注。'), node('p', 'note', '只提示复核，不表示超载或绩效。版本与需求不能单独覆盖。'));
+    follow.body.append(schedule, concurrency);
     ruleSummary.append(progress.box, follow.box);
   }
   function renderStatusSummary() {

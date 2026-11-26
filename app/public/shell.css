@@ -787,3 +787,59 @@ body.v2-page {
   .config-page .version-scope-table { min-width: 960px; }
   .config-page .version-scope-table td { padding: 14px 12px; }
 }
+
+/* Rules workspace visual alignment with total prototype V2. */
+.config-page .config-rule-object-controls { display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; padding:12px 14px; background:#f8fafd; border:1px solid #e9edf4; border-radius:8px; }
+.config-page .config-rule-scope-field { flex:0 0 276px; min-width:0; gap:6px; }
+.config-page .config-rule-scope-field > label, .config-page .config-rule-object-controls > .field > label { font-size:11px; line-height:17px; color:#687185; }
+.config-page .config-rule-scope-buttons { display:flex; width:100%; height:36px; padding:2px; gap:2px; background:#fff; border:1px solid #dfe5ef; border-radius:7px; }
+.config-page .config-rule-scope-buttons button { flex:1; min-width:0; min-height:30px; height:30px; padding:6px 10px; border:0; border-radius:4px; background:transparent; color:#687185; font-size:12px; line-height:18px; white-space:nowrap; }
+.config-page .config-rule-scope-buttons button[aria-pressed=true] { background:#eaf0fb; color:#405fae; font-weight:600; }
+.config-page .config-rule-scope-buttons button:hover { background:#f1f5fc; color:#405fae; }
+.config-page .config-rule-native-select { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.config-page .config-rule-object-controls > .field { flex:1 1 180px; min-width:160px; gap:6px; }
+.config-page .config-rule-object-controls > .field select { height:36px; min-height:36px; font-size:12px; }
+.config-page .config-rule-summary { grid-template-columns:minmax(0,1.8fr) minmax(300px,1fr); gap:18px; }
+.config-page .config-rule-summary > .config-v2-section { min-width:0; }
+.config-page .config-rule-summary .config-v2-section-head { padding:17px 18px; }
+.config-page .config-rule-summary .config-v2-section-head .section-title { font-size:14px; }
+.config-page .config-rule-summary .config-v2-section-body { padding:16px 18px; font-size:12px; line-height:1.85; }
+.config-page .config-rule-stage { display:grid; grid-template-columns:minmax(0,1fr) 170px; gap:12px; padding:17px 0; }
+.config-page .config-rule-stage-main { min-width:0; }
+.config-page .config-rule-stage h3, .config-page .config-rule-setting h3 { font-size:13px; line-height:24px; }
+.config-page .config-rule-stage > .config-rule-source, .config-page .config-rule-setting-head > .config-rule-source { align-self:start; justify-self:end; background:#f3f5f9; color:#687185; padding:3px 7px; font-size:10px; line-height:1.6; }
+.config-page .config-rule-stage .requirement-tags { gap:6px; margin-top:10px; }
+.config-page .config-rule-stage .requirement-tags .pill { background:#f6f8fc; border:1px solid #e5eaf2; color:#465875; font-size:12px; padding:4px 9px; line-height:1.6; border-radius:5px; }
+.config-page .config-rule-stage > .note { margin:3px 0 0; line-height:1.85; }
+.config-page .config-rule-fixed .config-rule-footnote { padding:11px 13px; margin-top:8px; background:#f8fafc; border-radius:6px; }
+.config-page .config-rule-setting { padding:17px 0; border-bottom:1px solid #edf0f5; }
+.config-page .config-rule-setting:first-child { padding-top:0; }
+.config-page .config-rule-setting:last-child { padding-bottom:0; border-bottom:0; }
+.config-page .config-rule-setting-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.config-page .config-rule-setting p { margin-top:10px; }
+.config-page .config-rule-setting .note { font-size:11px; color:#788295; line-height:1.85; }
+.config-page .config-v2-dialog { width:min(960px,calc(100vw - 32px)); }
+.config-page .config-v2-dialog > form { padding:18px 22px; }
+.config-page .config-v2-dialog > .config-v2-section-head { padding:18px 22px; background:#fafbfd; }
+.config-page .config-v2-dialog > .config-v2-section-head .section-title { font-size:17px; }
+.config-page #mg-rule-fields { gap:12px; }
+.config-page #mg-rule-fields > fieldset { padding:14px; border-radius:8px; background:#fff; }
+.config-page #mg-rule-fields legend { font-size:12px; color:#465064; }
+.config-page #mg-rule-fields label { min-height:32px; padding:5px 8px; font-size:12px; border-radius:6px; }
+.config-page #mg-rule-fields label:has(input:checked) { border:1px solid #b4c4e4; background:#edf2fb; color:#405fae; }
+.config-page #mg-rule-fields p { font-size:11px; line-height:1.85; color:#788295; }
+.config-page #mg-function-feedback { margin:0; padding:9px 0 0; }
+.config-page .config-v2-dialog textarea { min-height:64px; line-height:1.8; }
+@media(max-width:1300px) { .config-page .config-rule-summary { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:700px) {
+  .config-page .config-rule-object-controls { align-items:stretch; gap:12px; padding:12px; }
+  .config-page .config-rule-scope-field { flex-basis:100%; width:100%; }
+  .config-page .config-rule-object-controls > .field { min-width:120px; }
+  .config-page .config-rule-scope-buttons button { padding:6px 8px; }
+  .config-page .config-rule-stage { grid-template-columns:minmax(0,1fr); }
+  .config-page .config-rule-stage > .config-rule-source, .config-page .config-rule-setting-head > .config-rule-source { grid-column:1; justify-self:start; }
+  .config-page .config-rule-summary .config-v2-section-body { padding:14px 16px; }
+  .config-page .config-v2-dialog { width:calc(100vw - 24px); max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); }
+  .config-page .config-v2-dialog > form { padding:14px; }
+  .config-page .config-v2-dialog > .config-v2-section-head { padding:16px; }
+}
