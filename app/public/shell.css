@@ -843,3 +843,44 @@ body.v2-page {
   .config-page .config-v2-dialog > form { padding:14px; }
   .config-page .config-v2-dialog > .config-v2-section-head { padding:16px; }
 }
+
+/* V2 status semantics workspace alignment. */
+.config-page .config-v2-shell[data-workspace=status] .config-v2-top h1 { font-size:22px; }
+.config-page .config-v2-shell[data-workspace=status] .config-v2-subtabs { gap:28px; margin-bottom:20px; }
+.config-page .config-v2-shell[data-workspace=status] .config-v2-subtab { font-size:13px; }
+.config-page .config-v2-shell[data-workspace=status] .config-v2-content { padding-top:20px; }
+.config-page .config-v2-shell[data-workspace=status] .config-v2-top .note { font-size:12px; }
+.config-page .status-mapping-panel, .config-page .status-impact-panel { margin:0; padding:0; }
+.config-page .status-mapping-panel > .config-v2-section-head, .config-page .status-impact-panel > .config-v2-section-head { padding:16px 18px; }
+.config-page .status-mapping-panel > .config-v2-section-head .section-title, .config-page .status-impact-panel > .config-v2-section-head .section-title { font-size:14px; }
+.config-page .status-mapping-body { padding:10px 18px 16px; }
+.config-page .status-context { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin:0 0 14px; padding:12px 14px; background:#f8fafd; border:1px solid #e9edf4; border-radius:8px; }
+.config-page .status-context .field { flex:1 1 220px; min-width:160px; gap:6px; }
+.config-page .status-context .field > label { color:#687185; font-size:11px; line-height:17px; }
+.config-page .status-context select { width:100%; min-height:36px; height:36px; font-size:12px; }
+.config-page .status-summary { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+.config-page .status-summary .tag, .config-page .status-recovery-cell .tag { padding:4px 8px; border-radius:6px; font-size:11px; line-height:1.6; background:#f1f4f9; color:#687185; }
+.config-page .status-summary .tag.green, .config-page .status-recovery-cell .tag.green { background:#edf6f1; color:#327158; }
+.config-page .status-summary .tag.amber, .config-page .status-recovery-cell .tag.amber { background:#faf3e6; color:#926a34; }
+.config-page .status-table-wrap { margin:0; }
+.config-page .status-table { table-layout:fixed; min-width:680px; }
+.config-page .status-table th:nth-child(1) { width:23%; } .config-page .status-table th:nth-child(2) { width:17%; } .config-page .status-table th:nth-child(3) { width:26%; } .config-page .status-table th:nth-child(4) { width:20%; } .config-page .status-table th:nth-child(5) { width:14%; }
+.config-page .status-table td { vertical-align:middle; }
+.config-page .status-table tr.status-row-unmapped { background:#fffaf0; } .config-page .status-table tr.status-row-pending { background:#f7f9ff; }
+.config-page .status-source-cell { overflow-wrap:anywhere; } .config-page .status-source-id { display:block; margin-top:4px; color:#788295; font-size:10px; overflow-wrap:anywhere; }
+.config-page .status-timing-cell { display:flex; flex-wrap:wrap; gap:5px; } .config-page .status-timing-cell .tag { padding:3px 6px; border-radius:5px; background:#f2f4f8; color:#687185; font-size:10px; line-height:1.6; } .config-page .status-no-timing { color:#788295; font-size:11px; }
+.config-page .status-impact-body { padding:16px 18px 18px; }
+.config-page .status-current-card, .config-page .status-card { min-width:0; padding:20px; background:#fff; border:1px solid #e9edf4; border-radius:10px; box-shadow:0 3px 10px #33436603; }
+.config-page .status-eyebrow, .config-page .status-fact-label { color:#788295; font-size:11px; }
+.config-page .status-current-head { display:flex; align-items:center; justify-content:space-between; gap:16px; } .config-page .status-current-head h2, .config-page .status-card h2 { margin:0; color:#344054; font-size:14px; font-weight:600; }
+.config-page .status-current-head .tag { padding:4px 8px; border-radius:6px; background:#faf3e6; color:#926a34; font-size:11px; } .config-page .status-current-head .tag.green { background:#edf6f1; color:#327158; }
+.config-page .status-message, .config-page .status-note { margin:10px 0 16px; color:#687185; font-size:12px; line-height:1.8; }
+.config-page .status-facts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; padding-top:16px; border-top:1px solid #edf0f5; } .config-page .status-facts b { display:block; margin-top:7px; color:#465064; font-size:12px; line-height:1.85; font-weight:500; overflow-wrap:anywhere; }
+.config-page .status-recovery-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; margin-top:18px; align-items:start; } .config-page .status-card h2 { margin-bottom:16px; }
+.config-page .status-missing-list { list-style:none; padding:0; margin:0 0 12px; } .config-page .status-missing-list li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; margin-bottom:8px; border:1px solid #eee7d9; border-radius:7px; background:#fffcf6; } .config-page .status-missing-list b { color:#465064; font-size:12px; font-weight:600; }
+.config-page .status-verification-note { padding:12px 14px; background:#f8fafc; border:1px solid #edf0f5; border-radius:7px; color:#465064; font-size:12px; line-height:1.8; }
+.config-page .status-verify-button { margin-top:16px; min-height:34px; font-size:12px; border-radius:7px; } .config-page .status-audit-link { display:block; margin-top:14px; font-size:12px; } .config-page .status-empty { padding:14px; background:#f8fafc; border-radius:7px; color:#687185; font-size:12px; line-height:1.8; }
+.config-page .status-dialog { width:min(1000px,calc(100vw - 32px)); } .config-page .status-dialog > .config-v2-section-head { padding:18px 22px; background:#fafbfd; } .config-page .status-dialog > .config-v2-section-head .section-title { font-size:17px; } .config-page .status-dialog > form { padding:16px 22px 22px; }
+.config-page .status-dialog #mg-mappings { font-size:12px; } .config-page .status-dialog #mg-mappings tr { border-top:1px solid #edf0f5; } .config-page .status-dialog #mg-mappings td { padding:12px 10px; vertical-align:middle; } .config-page .status-dialog #mg-mappings select { width:100%; min-height:36px; font-size:12px; } .config-page .status-dialog .status-check { display:inline-flex; align-items:center; gap:5px; margin:3px 5px 3px 0; padding:5px 7px; border:1px solid #e5eaf2; border-radius:6px; font-size:11px; } .config-page .status-dialog .status-check input { width:13px; height:13px; min-height:0; margin:0; } .config-page .status-dialog .status-row-unmapped { background:#fffaf0; } .config-page .status-dialog .status-row-pending { background:#f7f9ff; }
+@media(max-width:1200px){ .config-page .status-facts { grid-template-columns:1fr 1fr; } .config-page .status-recovery-grid { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:700px){ .config-page .status-context { align-items:stretch; } .config-page .status-context .field { min-width:100%; } .config-page .status-mapping-body, .config-page .status-impact-body { padding:14px 16px 16px; } .config-page .status-current-card, .config-page .status-card { padding:16px; } .config-page .status-current-head { align-items:flex-start; flex-wrap:wrap; } .config-page .status-facts { grid-template-columns:minmax(0,1fr); gap:12px; } .config-page .status-facts > div { display:grid; grid-template-columns:88px minmax(0,1fr); gap:8px; } .config-page .status-facts b { margin-top:0; } .config-page .status-dialog { width:calc(100vw - 24px); max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); } .config-page .status-dialog > form { padding:14px 16px 18px; } .config-page .status-dialog #mg-mappings { min-width:620px; } }

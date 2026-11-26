@@ -381,6 +381,15 @@ const calendarFixture = {
     await page.locator('.config-v2-nav').filter({ hasText: '状态语义' }).click();
     await page.getByRole('region', { name: '状态语义映射', exact: true }).waitFor();
     assert.equal(await page.getByRole('button', { name: '编辑映射', exact: true }).isVisible(), false);
+    assert.equal(await page.locator('.status-context').count(), 1);
+    assert.equal(await page.locator('.status-summary .tag').count(), 3);
+    assert.equal(await page.locator('.status-table').count(), 1);
+    await page.getByRole('button', { name: '影响与恢复', exact: true }).click();
+    assert.equal(await page.locator('.status-current-card').count(), 1);
+    assert.equal(await page.locator('.status-recovery-grid').count(), 1);
+    assert.equal(await page.locator('.status-pending-card').count(), 1);
+    assert.equal(await page.locator('.status-verification-card').count(), 1);
+    await page.getByRole('button', { name: '状态映射', exact: true }).click();
     await page.locator('.config-v2-nav').filter({ hasText: '人员与通知' }).click();
     assert.match(await page.locator('.config-content').innerText(), /当前身份：测试用户/);
 

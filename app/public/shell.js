@@ -1592,6 +1592,8 @@ async function renderConfig(view, current) {
   const ruleEditor = createEditor('编辑配置', ruleForm);
   const calendarEditor = createEditor('日期配置', calendarForm);
   const mappingEditor = createEditor('编辑状态映射', mappingForm);
+  mappingEditor.classList.add('status-dialog');
+  mappingForm.classList.add('status-mapping-form');
   const editors = [ruleEditor, calendarEditor, mappingEditor];
   ruleDetails.remove();
   const calendarList = control('mg-calendar-list');
@@ -1666,17 +1668,30 @@ async function renderConfig(view, current) {
   editCalendar.hidden = !editable; calendarPanel.head.append(editCalendar);
   pages['version/calendar'] = calendarWorkspace;
   const statusPanel = panel('状态语义映射', '保留 Teambition 原始状态，用统一语义驱动完成判断、历时和风险通知。');
-  const statusContext = node('div', 'config-rule-controls');
+  statusPanel.box.classList.add('status-mapping-panel');
+  statusPanel.body.classList.add('status-mapping-body');
+  const statusContext = node('div', 'config-rule-controls status-context');
   const projectField = node('div', 'field'), workflowField = node('div', 'field');
   projectField.append(projectLabel, projectSelect); workflowField.append(workflowLabel, workflowSelect);
   statusContext.append(projectField, workflowField);
-  const statusSummary = node('div'); statusPanel.body.append(statusContext, statusSummary);
+  const statusSummary = node('div', 'status-summary-content'); statusPanel.body.append(statusContext, statusSummary);
   const editMapping = button('编辑映射', () => { management.discardMapping(); control('mg-mapping-reason').value = ''; mappingEditor.showModal(); }, 'button primary');
   editMapping.hidden = !editable; statusPanel.head.append(editMapping);
   pages['status/mapping'] = statusPanel.box;
   const impactPanel = panel('影响与恢复', '保存映射后仍需重新同步并验证；未恢复前，相关异常继续保留。');
-  const verify = control('mg-verify'); impactPanel.body.append(verify, link('打开异常与审计', '#/anomalies', 'row-link'));
-  const recoverySummary = node('div'); impactPanel.body.prepend(recoverySummary);
+  impactPanel.box.classList.add('status-impact-panel');
+  impactPanel.body.classList.add('status-impact-body');
+  const recoverySummary = node('div', 'status-current-summary');
+  const currentCard = node('section', 'status-current-card');
+  currentCard.append(node('div', 'status-eyebrow', '当前状态'), recoverySummary);
+  const pendingCard = node('section', 'status-card status-pending-card');
+  pendingCard.append(node('h2', null, '待处理问题'), node('div', 'status-pending-content'));
+  const verify = control('mg-verify'); verify.classList.add('status-verify-button');
+  const auditLink = link('打开异常与审计', '#/anomalies', 'row-link status-audit-link');
+  const verifyCard = node('section', 'status-card status-verification-card');
+  verifyCard.append(node('h2', null, '验证恢复'), node('div', 'status-verification-note', '保存映射后可验证；全部映射补齐后才可验证成功。'), verify, auditLink);
+  const recoveryGrid = node('div', 'status-recovery-grid'); recoveryGrid.append(pendingCard, verifyCard);
+  impactPanel.body.append(currentCard, recoveryGrid);
   pages['status/impact'] = impactPanel.box;
   const peoplePanel = panel('人员与权限', '业务角色与系统权限分别维护；权限和身份状态维护仅对所有者开放。');
   const peopleBody = node('div'); peoplePanel.body.append(peopleBody, link('身份与权限维护', '/acceptance', 'button small'));
@@ -1765,20 +1780,39 @@ async function renderConfig(view, current) {
     follow.body.append(schedule, concurrency);
     ruleSummary.append(progress.box, follow.box);
   }
-  function renderStatusSummary() {
-    if (!catalog) return;
-    const project = catalog.projects.find(item => item.id === projectSelect.value) ?? catalog.projects[0];
-    const statuses = (project?.statuses ?? []).filter(item => workflowSelect.value === '__used__' ? item.usedCount : !workflowSelect.value || item.workflowId === workflowSelect.value);
-    let mapped = 0, verified = 0;
-    const rows = statuses.map(status => {
-      const mapping = catalog.mappings.find(item => item.source_project_id === project?.id && item.status_id === status.id);
-      if (mapping?.semantic) mapped++; if (mapping?.recovery === 'verified') verified++;
-      const row = node('tr');
-      row.append(node('td', null, status.name + ' · ' + (status.workflowName || '工作流名称未获取')), node('td', 'task-number', status.id), node('td', null, catalog.semantics[mapping?.semantic] || '未映射'), node('td', null, mapping?.markers?.map(value => ({ development_start: '开发开始', development_end: '开发结束', test_start: '测试开始', test_end: '测试结束' })[value]).join('、') || '无计时节点'), node('td', null, mapping?.recovery === 'verified' ? '已验证恢复' : mapping?.semantic ? '待验证恢复' : '待映射'));
-      return row;
+  function renderStatusSummary(){
+    if(!catalog)return;
+    const project=catalog.projects.find(item=>item.id===projectSelect.value)??catalog.projects[0];
+    const statuses=(project?.statuses??[]).filter(item=>workflowSelect.value==='__used__'?item.usedCount:!workflowSelect.value||item.workflowId===workflowSelect.value);
+    let mapped=0,verified=0;
+    const rows=statuses.map(status=>{
+      const mapping=catalog.mappings.find(item=>item.source_project_id===project?.id&&item.status_id===status.id);
+      if(mapping?.semantic)mapped++; if(mapping?.recovery==='verified')verified++;
+      const row=node('tr'); row.className=mapping?.recovery==='verified'?'status-row-verified':mapping?.semantic?'status-row-pending':'status-row-unmapped';
+      const source=node('td','status-source-cell',status.name+' · '+(status.workflowName||'工作流名称未获取')); source.title='状态 ID：'+status.id+'；工作流 ID：'+status.workflowId;
+      const id=node('td','task-number status-id-cell',status.id);
+      const semantic=node('td','status-semantic-cell',catalog.semantics[mapping?.semantic]||'未映射');
+      const timing=node('td','status-timing-cell');
+      const timingValues=mapping?.markers?.map(value=>({development_start:'开发开始',development_end:'开发结束',test_start:'测试开始',test_end:'测试结束'})[value]).filter(Boolean)??[];
+      if(timingValues.length)for(const value of timingValues)timing.append(node('span','tag',value));else timing.append(node('span','status-no-timing','无计时节点'));
+      const recovery=node('td','status-recovery-cell'); recovery.append(node('span','tag '+(mapping?.recovery==='verified'?'green':'amber'),mapping?.recovery==='verified'?'已验证':mapping?.semantic?'待验证恢复':'待映射'));
+      row.append(source,id,semantic,timing,recovery); return row;
     });
-    statusSummary.replaceChildren(node('p', 'note', statuses.length + ' 个原始状态 · ' + mapped + ' 个已映射 · ' + (statuses.length - mapped) + ' 个待映射'), buildTable('状态语义映射', ['原始状态与工作流', '状态 ID', '统一管理语义', '计时节点', '映射结果'], rows, '当前筛选没有状态。'));
-    recoverySummary.replaceChildren(node('p', null, verified + ' / ' + statuses.length + ' 个状态已验证恢复'), node('p', 'note', '未映射状态继续同步，但暂停受影响的完成判断、开发/测试历时、风险和通知。恢复需相关数据重新同步、计算或校验确认；过程继续保留。'));
+    const summary=node('div','status-summary'); summary.append(node('span','tag',statuses.length+' 个原始状态'),node('span','tag green',mapped+' 个已映射'),node('span','tag amber',(statuses.length-mapped)+' 个待映射'));
+    const tableWrap=buildTable('状态语义映射',['原始状态与工作流','状态 ID','统一管理语义','计时节点','映射结果'],rows,'当前筛选没有状态。'); tableWrap.classList.add('status-table-wrap'); tableWrap.querySelector('table')?.classList.add('status-table'); statusSummary.replaceChildren(summary,tableWrap);
+    const missing=statuses.filter(status=>{const mapping=catalog.mappings.find(item=>item.source_project_id===project?.id&&item.status_id===status.id);return !mapping?.semantic;});
+    const pending=statuses.filter(status=>{const mapping=catalog.mappings.find(item=>item.source_project_id===project?.id&&item.status_id===status.id);return mapping?.semantic&&mapping?.recovery!=='verified';});
+    const currentTag=node('span','tag '+(missing.length?'amber':verified===statuses.length&&statuses.length?'green':'amber'),missing.length?missing.length+' 个状态未映射':verified===statuses.length&&statuses.length?'验证通过':'映射已补齐，仍需验证');
+    const currentMessage=node('p','status-message',missing.length?'未映射工单继续同步，受影响的完成判断、历时、风险和通知暂停。':verified===statuses.length&&statuses.length?'映射恢复已验证，相关能力可继续使用。':'保存映射后，须经同步、计算或校验确认恢复。');
+    const currentHead=node('div','status-current-head');
+    currentHead.append(node('h2',null,missing.length?'需要补齐状态映射':verified===statuses.length&&statuses.length?'验证通过':'映射已补齐，仍需验证'),currentTag);
+    const facts=node('div','status-facts');
+    for(const [label,value] of [['关联异常',missing.length+' 个状态待处理'],['影响范围','当前筛选 · '+statuses.length+' 个原始状态'],['受影响能力',missing.length||pending.length?'完成判断、历时、风险和通知暂停':'已恢复'],['下一步',missing.length?'补齐映射并保存':verified===statuses.length&&statuses.length?'查看异常与审计':'验证恢复结果']]){const fact=node('div');fact.append(node('span','status-fact-label',label),node('b',null,value));facts.append(fact);}
+    recoverySummary.replaceChildren(currentHead,currentMessage,facts);
+    const pendingContent=pendingCard.querySelector('.status-pending-content'); pendingContent.replaceChildren();
+    if(missing.length){const list=node('ul','status-missing-list');for(const status of missing){const li=node('li'),detail=node('div');detail.append(node('b',null,status.name),node('span','status-source-id',status.id));li.append(detail,node('span','tag amber','待映射'));list.append(li);}pendingContent.append(list,node('p','status-note','未映射工单继续同步，受影响能力暂停。'));} else pendingContent.append(node('div','status-empty',pending.length?'无未映射状态，等待验证恢复。':'映射与验证已完成。'));
+    recoverySummary.dataset.verified=String(verified); recoverySummary.dataset.total=String(statuses.length);
+    const verifyButton=control('mg-verify'); verifyButton.classList.toggle('status-action-primary',!missing.length); verifyButton.disabled=!editable||Boolean(missing.length); verifyButton.title=missing.length?'全部状态映射后才能验证恢复':'';
   }
   function openCalendarDate(day = control('mg-calendar-day').value) {
     control('mg-calendar-day').value = day || '';
@@ -2058,8 +2092,3 @@ async function boot() {
 }
 
 if (typeof document !== 'undefined') boot();
-
-
-
-
-
