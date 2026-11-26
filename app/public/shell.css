@@ -713,6 +713,7 @@ body.v2-page {
 .config-page .cal-intro { margin: 0 0 16px; padding: 14px 18px; color: #75440c; background: #fff7e9; border: 1px solid #eed4a3; border-radius: 8px; line-height: 1.6; }
 .config-page .cal-layout { display: grid; grid-template-columns: minmax(0, 2.55fr) minmax(280px, 1fr); gap: 18px; align-items: start; }
 .config-page .cal-layout > .cal-panel, .config-page .cal-aside > .cal-panel { margin: 0; }
+.config-page .cal-aside { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .config-page .cal-panel .config-v2-section-head { padding: 16px 20px; }
 .config-page .cal-panel .config-v2-section-head h2 { font-size: 17px; }
 .config-page .cal-panel .config-v2-section-head .note { margin-left: 8px; font-weight: 400; }
@@ -735,11 +736,11 @@ body.v2-page {
 .config-page .cal-day { align-items: flex-start; width: 100%; height: 78px; min-width: 0; padding: 8px; border-color: #e2e6ed; border-radius: 7px; overflow: hidden; }
 .config-page .cal-day strong { font-size: 13px; font-weight: 600; }
 .config-page .cal-day .cal-label { max-width: 100%; padding: 1px 4px; border-radius: 3px; background: #fff; font-size: 11px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-.config-page .cal-day.workday .cal-label { color: #315f9b; }
-.config-page .cal-day.weekend { background: #e8ebf0; }
+.config-page .cal-day.workday .cal-label { color: #182033; }
+.config-page .cal-day.weekend { background: #fafbfc; }
 .config-page .cal-day.holiday { background: #fff0f0; border-color: #f0c5c8; }
 .config-page .cal-day.holiday .cal-label { color: #c52b31; }
-.config-page .cal-day.shift { background: #fff8df; border-color: #eed995; }
+.config-page .cal-day.shift { background: #fff8dd; border-color: #e6d28d; }
 .config-page .cal-day.shift .cal-label { color: #8b6414; }
 .config-page .cal-day:hover { border-color: #6081be; background: #f7faff; }
 .config-page .cal-day:focus-visible, .config-page .cal-month-actions .button:focus-visible { outline: 2px solid #2147b7; outline-offset: 2px; }
