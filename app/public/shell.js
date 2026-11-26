@@ -1789,17 +1789,17 @@ async function renderConfig(view, current) {
       const mapping=catalog.mappings.find(item=>item.source_project_id===project?.id&&item.status_id===status.id);
       if(mapping?.semantic)mapped++; if(mapping?.recovery==='verified')verified++;
       const row=node('tr'); row.className=mapping?.recovery==='verified'?'status-row-verified':mapping?.semantic?'status-row-pending':'status-row-unmapped';
-      const source=node('td','status-source-cell',status.name+' · '+(status.workflowName||'工作流名称未获取')); source.title='状态 ID：'+status.id+'；工作流 ID：'+status.workflowId;
-      const id=node('td','task-number status-id-cell',status.id);
+      const source=node('td','status-source-cell',status.name); source.title='状态 ID：'+status.id;
+      const workflow=node('td','status-workflow-cell',status.workflowName||'工作流名称未获取'); workflow.title='工作流 ID：'+status.workflowId;
       const semantic=node('td','status-semantic-cell',catalog.semantics[mapping?.semantic]||'未映射');
       const timing=node('td','status-timing-cell');
-      const timingValues=mapping?.markers?.map(value=>({development_start:'开发开始',development_end:'开发结束',test_start:'测试开始',test_end:'测试结束'})[value]).filter(Boolean)??[];
-      if(timingValues.length)for(const value of timingValues)timing.append(node('span','tag',value));else timing.append(node('span','status-no-timing','无计时节点'));
+      const timingValues=mapping?.markers?.map(value=>({development_start:['开发开始','start'],development_end:['开发结束','end'],test_start:['测试开始','start'],test_end:['测试结束','end']})[value]).filter(Boolean)??[];
+      if(timingValues.length)for(const [label,type] of timingValues)timing.append(node('span','tag status-timing-'+type,label));else timing.append(node('span','status-no-timing','无计时节点'));
       const recovery=node('td','status-recovery-cell'); recovery.append(node('span','tag '+(mapping?.recovery==='verified'?'green':'amber'),mapping?.recovery==='verified'?'已验证':mapping?.semantic?'待验证恢复':'待映射'));
-      row.append(source,id,semantic,timing,recovery); return row;
+      row.append(source,workflow,semantic,timing,recovery); return row;
     });
     const summary=node('div','status-summary'); summary.append(node('span','tag',statuses.length+' 个原始状态'),node('span','tag green',mapped+' 个已映射'),node('span','tag amber',(statuses.length-mapped)+' 个待映射'));
-    const tableWrap=buildTable('状态语义映射',['原始状态与工作流','状态 ID','统一管理语义','计时节点','映射结果'],rows,'当前筛选没有状态。'); tableWrap.classList.add('status-table-wrap'); tableWrap.querySelector('table')?.classList.add('status-table'); statusSummary.replaceChildren(summary,tableWrap);
+    const tableWrap=buildTable('状态语义映射',['原始状态','工作流','统一管理语义','计时节点','映射结果'],rows,'当前筛选没有状态。'); tableWrap.classList.add('status-table-wrap'); tableWrap.querySelector('table')?.classList.add('status-table'); statusSummary.replaceChildren(summary,tableWrap);
     const missing=statuses.filter(status=>{const mapping=catalog.mappings.find(item=>item.source_project_id===project?.id&&item.status_id===status.id);return !mapping?.semantic;});
     const pending=statuses.filter(status=>{const mapping=catalog.mappings.find(item=>item.source_project_id===project?.id&&item.status_id===status.id);return mapping?.semantic&&mapping?.recovery!=='verified';});
     const currentTag=node('span','tag '+(missing.length?'amber':verified===statuses.length&&statuses.length?'green':'amber'),missing.length?missing.length+' 个状态未映射':verified===statuses.length&&statuses.length?'验证通过':'映射已补齐，仍需验证');
@@ -1810,7 +1810,7 @@ async function renderConfig(view, current) {
     for(const [label,value] of [['关联异常',missing.length+' 个状态待处理'],['影响范围','当前筛选 · '+statuses.length+' 个原始状态'],['受影响能力',missing.length||pending.length?'完成判断、历时、风险和通知暂停':'已恢复'],['下一步',missing.length?'补齐映射并保存':verified===statuses.length&&statuses.length?'查看异常与审计':'验证恢复结果']]){const fact=node('div');fact.append(node('span','status-fact-label',label),node('b',null,value));facts.append(fact);}
     recoverySummary.replaceChildren(currentHead,currentMessage,facts);
     const pendingContent=pendingCard.querySelector('.status-pending-content'); pendingContent.replaceChildren();
-    if(missing.length){const list=node('ul','status-missing-list');for(const status of missing){const li=node('li'),detail=node('div');detail.append(node('b',null,status.name),node('span','status-source-id',status.id));li.append(detail,node('span','tag amber','待映射'));list.append(li);}pendingContent.append(list,node('p','status-note','未映射工单继续同步，受影响能力暂停。'));} else pendingContent.append(node('div','status-empty',pending.length?'无未映射状态，等待验证恢复。':'映射与验证已完成。'));
+    if(missing.length){const list=node('ul','status-missing-list');for(const status of missing){const li=node('li'),detail=node('div');detail.append(node('b',null,status.name),node('span','status-workflow-note',status.workflowName||'工作流名称未获取'));li.append(detail,node('span','tag amber','待映射'));list.append(li);}pendingContent.append(list,node('p','status-note','未映射工单继续同步，受影响能力暂停。'));} else pendingContent.append(node('div','status-empty',pending.length?'无未映射状态，等待验证恢复。':'映射与验证已完成。'));
     recoverySummary.dataset.verified=String(verified); recoverySummary.dataset.total=String(statuses.length);
     const verifyButton=control('mg-verify'); verifyButton.classList.toggle('status-action-primary',!missing.length); verifyButton.disabled=!editable||Boolean(missing.length); verifyButton.title=missing.length?'全部状态映射后才能验证恢复':'';
   }

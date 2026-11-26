@@ -58,16 +58,15 @@ export async function setupManagement(actor,api,root=document,{onChange=()=>{},o
       if($('mg-workflow').value&&$('mg-workflow').value!=='__used__'&&status.workflowId!==$('mg-workflow').value)continue;
       const original=mapFor(status.id),current=draft.get(status.id)??{semantic:original?.semantic??null,markers:original?.markers??[]};
       const row=node('tr'); row.className=original?.recovery==='verified'?'status-row-verified':original?.semantic?'status-row-pending':'status-row-unmapped';
-      const name=styled('td','status-source-cell',status.name+' · '+(status.workflowName??'工作流名称未获取')+' · 当前 '+status.usedCount+' 张');
-      if(project.statuses.some(other=>other.id!==status.id&&other.name===status.name&&other.workflowName===status.workflowName)) name.append(styled('small','status-source-id','状态 ID：'+status.id));
-      name.title='状态 ID：'+status.id+'；工作流 ID：'+status.workflowId;
+      const name=styled('td','status-source-cell',status.name+' · 当前 '+status.usedCount+' 张'); name.title='状态 ID：'+status.id;
+      const workflow=styled('td','status-workflow-cell',status.workflowName??'工作流名称未获取'); workflow.title='工作流 ID：'+status.workflowId;
       const sem=styled('td','status-semantic-cell'),select=node('select'); select.setAttribute('aria-label',status.name+'的管理语义'); option(select,'','未映射');
       for(const [id,label] of Object.entries(data.semantics))option(select,id,label); select.value=current.semantic??''; select.disabled=!editable; sem.append(select);
       const marks=styled('td','status-timing-cell'),checks=[];
-      for(const [id,labelText] of Object.entries(markerLabels)){const label=styled('label','status-check'),check=node('input');check.type='checkbox';check.value=id;check.checked=current.markers.includes(id);check.disabled=!editable;checks.push(check);label.append(check,document.createTextNode(labelText));marks.append(label);}
+      for(const [id,labelText] of Object.entries(markerLabels)){const label=styled('label','status-check status-timing-'+(id.endsWith('_start')?'start':'end')),check=node('input');check.type='checkbox';check.value=id;check.checked=current.markers.includes(id);check.disabled=!editable;checks.push(check);label.append(check,document.createTextNode(labelText));marks.append(label);}
       const update=()=>{draft.set(status.id,{statusId:status.id,semantic:select.value||null,markers:checks.filter(c=>c.checked).map(c=>c.value)});row.className=select.value?'status-row-pending':'status-row-unmapped';}; select.onchange=update; for(const check of checks)check.onchange=update;
       const recovery=styled('td','status-recovery-cell'); recovery.append(styled('span','tag '+(original?.recovery==='verified'?'green':'amber'),original?.recovery==='verified'?'已验证':original?.semantic?'待验证恢复':'待映射'));
-      row.append(name,sem,marks,recovery);$('mg-mappings').append(row);
+      row.append(name,workflow,sem,marks,recovery);$('mg-mappings').append(row);
     }
   }
   async function results(){if(!$('mg-version').value){$('mg-results').replaceChildren(node('p','暂无活跃版本。'));return;}const result=await api('/api/management/versions/'+$('mg-version').value);const root=$('mg-results');root.replaceChildren(node('h3','需求阶段（按已保存事实重新计算）'),node('p','依据最近成功同步：'+(result.sourceSnapshotAt?new Date(result.sourceSnapshotAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'尚无成功记录')+(result.sourceSyncStatus==='failed'?'；最近读取失败，以下保留上次成功快照。':'。')));const progress=result.progress,phase=p=>p.unknown?'待核对（'+p.unknown+' 个需求）':p.total?p.completed+'/'+p.total:'无核心需求';root.append(node('p','核心需求等权汇总：基础流程 '+phase(progress.foundation)+'，测试阶段 '+phase(progress.test)+'。'));const stage=s=>s.complete?'已完成':s.missingFunctions?.length?'缺少职能：'+s.missingFunctions.join('、'):s.empty?'尚无后代工单':s.calculable===false?'数据待核对，不能判断完成':s.structureUnknown?'结构异常，不能判定完成':'待完成或数据待核对（'+(s.blockedTaskIds?.length??0)+' 张）';root.append(table(['核心需求','基础流程','细节完整','测试阶段','交付 / 非交付终态'],result.requirements.map(r=>[r.title,stage(r.stages.foundation),stage(r.stages.detail),stage(r.stages.test),r.stages.deliveredCount+' / '+r.stages.nonDeliveryCount])));

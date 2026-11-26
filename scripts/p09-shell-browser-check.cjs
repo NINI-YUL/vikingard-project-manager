@@ -616,6 +616,23 @@ const calendarFixture = {
         }
       }
     }
+    await page.setViewportSize({ width: 375, height: 400 });
+    await useSpace('status');
+    await page.getByRole('button', { name: '状态映射', exact: true }).click();
+    const statusTable = page.getByRole('region', { name: '状态语义映射', exact: true });
+    assert.deepEqual(await statusTable.locator('thead th').allTextContents(), ['原始状态', '工作流', '统一管理语义', '计时节点', '映射结果']);
+    assert.doesNotMatch(await statusTable.innerText(), /developing/);
+    await page.getByRole('button', { name: '编辑映射', exact: true }).click();
+    const statusEditor = page.getByRole('dialog', { name: '编辑状态映射', exact: true });
+    assert.deepEqual(await statusEditor.locator('thead th').allTextContents(), ['原始状态', '工作流', '统一管理语义', '计时节点', '恢复状态']);
+    assert.equal(await statusEditor.locator('.status-timing-start').count(), 2);
+    assert.equal(await statusEditor.locator('.status-timing-end').count(), 2);
+    assert.equal(await statusEditor.locator('.status-timing-start').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(237, 242, 251)');
+    assert.equal(await statusEditor.locator('.status-timing-end').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(237, 246, 241)');
+    const headerTop = await statusEditor.locator(':scope > .config-v2-section-head').evaluate(element => element.getBoundingClientRect().top);
+    await statusEditor.locator('form').evaluate(form => { form.scrollTop = form.scrollHeight; });
+    assert.equal(await statusEditor.locator(':scope > .config-v2-section-head').evaluate(element => element.getBoundingClientRect().top), headerTop);
+    await statusEditor.getByRole('button', { name: '关闭', exact: true }).click();
     await page.setViewportSize({ width: 1440, height: 1000 });
     await useSpace('version');
     await page.getByRole('button', { name: '规则设置', exact: true }).click();
