@@ -74,6 +74,11 @@ const tasks = Array.from({ length: 101 }, (_, index) => ({
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 let server, browser;
 let configRules = [];
+const calendarMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
+const calendarFixture = {
+  [calendarMonth + '-01']: { working: false, intervals: [] },
+  [calendarMonth + '-02']: { working: true, intervals: [{ start: '09:00', end: '12:00' }] }
+};
 
 (async () => {
   try {
@@ -100,7 +105,7 @@ let configRules = [];
       else if (url.pathname === '/api/management') data = {
         revision: 1, functions: ['UI界面', 'UI图标', '客户端'], semantics: { not_started: '未开始', developing: '开发中' },
         markers: ['development_start'], defaults: { foundation: ['UI界面', '客户端'], detail: ['UI图标'], schedules: [{ day: 2, time: '10:00' }], concurrency: 3 },
-        rules: configRules, calendar: {}, mappings: [], projects: [{ id: 'project', name: '测试项目', statuses: [{ id: 'developing', name: '开发中', workflowId: 'flow', workflowName: '开发流程', usedCount: 1 }] }],
+        rules: configRules, calendar: calendarFixture, mappings: [], projects: [{ id: 'project', name: '测试项目', statuses: [{ id: 'developing', name: '开发中', workflowId: 'flow', workflowName: '开发流程', usedCount: 1 }] }],
         versions: versions.map(version => ({ id: version.id, name: version.displayName, lifecycle: 'enrolled' })), requirements: []
       };
       else if (url.pathname.startsWith('/api/management/versions/')) data = management(versionIds.indexOf(url.pathname.split('/').at(-1)));
@@ -449,6 +454,7 @@ let configRules = [];
       assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
       const input = route.request().postDataJSON();
       assert.ok(['calendar', 'rules'].includes(input.kind));
+      if (input.kind === 'calendar' && input.values.working === false) assert.deepEqual(input.values.intervals, [], 'Holiday preview must omit hidden work intervals');
       const before = { foundation: { value: ['UI界面', '客户端'], source: 'system' }, detail: { value: ['UI图标'], source: 'system' }, schedules: { value: [{ day: 2, time: '10:00' }], source: 'system' }, concurrency: { value: 3, source: 'system' } };
       const after = { ...before };
       if (input.kind === 'rules') for (const [key, value] of Object.entries(input.values)) after[key] = { value, source: input.scope };
@@ -461,6 +467,10 @@ let configRules = [];
       assert.equal(input.previewToken, 'fake-preview');
       assert.equal(input.confirmed, true);
       assert.equal(input.expectedRevision, 1);
+      if (input.kind === 'calendar') {
+        if (input.values.working === false) assert.deepEqual(input.values.intervals, [], 'Holiday save must omit hidden work intervals');
+        calendarFixture[input.values.day] = input.values;
+      }
       saved++;
       if (input.kind === 'rules') configRules = [{ scope: input.scope, scope_key: input.scopeKey, values: input.values }];
       await route.fulfill({ json: { saved: true, revision: 2 } });
@@ -489,6 +499,15 @@ let configRules = [];
     const calendarTypes = await page.locator('#mg-calendar-working option').allTextContents();
     assert.ok(calendarTypes.includes('节假日'));
     assert.ok(calendarTypes.includes('补班（工作日）'));
+    await page.locator('#mg-calendar-intervals input[aria-label="时段开始"]').first().fill('');
+    await page.locator('#mg-calendar-working').selectOption('false');
+    assert.equal(await page.locator('#mg-calendar-interval-fields').isHidden(), true);
+    assert.equal(await page.locator('#mg-calendar-intervals input').first().isDisabled(), true);
+    assert.equal(await page.locator('#mg-calendar-interval-note').isVisible(), true);
+    await page.locator('#mg-calendar-working').selectOption('true');
+    assert.equal(await page.locator('#mg-calendar-interval-fields').isHidden(), false);
+    assert.equal(await page.locator('#mg-calendar-intervals input').first().isDisabled(), false);
+    await page.locator('#mg-calendar-working').selectOption('false');
     await page.locator('#mg-calendar-day').fill('2026-11-28');
     await page.locator('#mg-calendar-reason').fill('隔离浏览器验证');
     await page.locator('#mg-calendar-form button[type=submit]').click();
@@ -554,6 +573,11 @@ let configRules = [];
         for (const label of labels) {
           await page.getByRole('button', { name: label, exact: true }).click();
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, width + ' ' + label);
+          if (label === '工作日历') {
+            const [special, defaults] = await page.locator('.cal-aside > .cal-panel').evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return { left: box.left, top: box.top, bottom: box.bottom }; }));
+            assert.equal(special.left, defaults.left, width + ' calendar aside stays in one column');
+            assert.ok(defaults.top - special.bottom >= 15, width + ' calendar aside panels have 16px spacing');
+          }
           await page.screenshot({ path: path.join(output, 'p09-config-' + workspace + '-' + labels.indexOf(label) + '-' + width + '.png'), fullPage: true });
         }
       }

@@ -713,7 +713,7 @@ body.v2-page {
 .config-page .cal-intro { margin: 0 0 16px; padding: 14px 18px; color: #75440c; background: #fff7e9; border: 1px solid #eed4a3; border-radius: 8px; line-height: 1.6; }
 .config-page .cal-layout { display: grid; grid-template-columns: minmax(0, 2.55fr) minmax(280px, 1fr); gap: 18px; align-items: start; }
 .config-page .cal-layout > .cal-panel, .config-page .cal-aside > .cal-panel { margin: 0; }
-.config-page .cal-aside { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.config-page .cal-aside { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .config-page .cal-panel .config-v2-section-head { padding: 16px 20px; }
 .config-page .cal-panel .config-v2-section-head h2 { font-size: 17px; }
 .config-page .cal-panel .config-v2-section-head .note { margin-left: 8px; font-weight: 400; }
@@ -723,26 +723,26 @@ body.v2-page {
 .config-page .cal-calendar-head h3 .note { margin-left: 8px; font-size: 11px; font-weight: 400; }
 .config-page .cal-month-actions { display: flex; gap: 8px; }
 .config-page .cal-month-actions .button { min-height: 38px; }
-.config-page .cal-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 18px; color: #4b5670; font-size: 12px; }
+.config-page .cal-legend { display: flex; flex-wrap: wrap; gap: 10px 14px; margin: 0 0 14px; color: #687185; font-size: 10px; }
 .config-page .cal-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.config-page .cal-swatch { width: 16px; height: 16px; flex: none; border: 1px solid #a8b4c8; background: #315f9b; }
-.config-page .cal-swatch.weekend { background: #e8ebf0; }
-.config-page .cal-swatch.holiday { background: #ca393f; }
-.config-page .cal-swatch.shift { background: #f2c84b; }
+.config-page .cal-swatch { width: 10px; height: 10px; flex: none; border-radius: 3px; border: 1px solid #d6deeb; background: #f8fafd; }
+.config-page .cal-swatch.weekend { background: #eef1f5; }
+.config-page .cal-swatch.holiday { background: #e9e3f2; border-color: #cfc3e0; }
+.config-page .cal-swatch.shift { background: #dce7f8; border-color: #b7c9e5; }
 .config-page .cal-weekdays, .config-page .cal-days { gap: 6px; }
 .config-page .cal-weekdays { margin-bottom: 8px; color: #78849b; font-size: 12px; text-align: center; }
 .config-page .cal-weekdays span { padding: 6px 0; }
-.config-page .cal-weekdays span:first-child, .config-page .cal-weekdays span:last-child { color: #b54d54; }
-.config-page .cal-day { align-items: flex-start; width: 100%; height: 78px; min-width: 0; padding: 8px; border-color: #e2e6ed; border-radius: 7px; overflow: hidden; }
-.config-page .cal-day strong { font-size: 13px; font-weight: 600; }
-.config-page .cal-day .cal-label { max-width: 100%; padding: 1px 4px; border-radius: 3px; background: #fff; font-size: 11px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-.config-page .cal-day.workday .cal-label { color: #182033; }
-.config-page .cal-day.weekend { background: #fafbfc; }
-.config-page .cal-day.holiday { background: #fff0f0; border-color: #f0c5c8; }
-.config-page .cal-day.holiday .cal-label { color: #c52b31; }
-.config-page .cal-day.shift { background: #fff8dd; border-color: #e6d28d; }
-.config-page .cal-day.shift .cal-label { color: #8b6414; }
+.config-page .cal-weekdays span:first-child, .config-page .cal-weekdays span:last-child { color: #8a94a6; }
+.config-page .cal-day { align-items: flex-start; width: 100%; height: 78px; min-width: 0; padding: 8px; gap: 5px; border-color: #e9edf4; border-radius: 7px; overflow: hidden; }
 .config-page .cal-day:hover { border-color: #6081be; background: #f7faff; }
+.config-page .cal-day strong { font-size: 12px; font-weight: 500; }
+.config-page .cal-day .cal-label { max-width: 100%; padding: 2px 4px; border-radius: 4px; background: #fff; font-size: 10px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.config-page .cal-day.workday .cal-label { color: #182033; }
+.config-page .cal-day.weekend { background: #f7f9fc; }
+.config-page .cal-day.holiday { background: #f4f0f8; border-color: #e4dced; }
+.config-page .cal-day.holiday .cal-label { color: #79648e; background: #ebe4f3; }
+.config-page .cal-day.shift { background: #eef3fb; border-color: #dce5f3; }
+.config-page .cal-day.shift .cal-label { color: #536f9f; background: #e1eaf9; }
 .config-page .cal-day:focus-visible, .config-page .cal-month-actions .button:focus-visible { outline: 2px solid #2147b7; outline-offset: 2px; }
 .config-page .cal-defaults { display: grid; gap: 12px; }
 .config-page .cal-defaults > div { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid #e9edf4; border-radius: 7px; background: #fafbfd; font-size: 12px; }
@@ -753,6 +753,6 @@ body.v2-page {
 .config-page .cal-aside th, .config-page .cal-aside td { font-size: 11px; }
 .config-page .cal-aside td { padding: 10px 12px; }
 .config-page .cal-panel .config-v2-dialog { font-size: 12px; }
-@media(max-width:1050px) { .config-page .cal-layout { grid-template-columns: 1fr; } .config-page .cal-aside { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; } }
-@media(max-width:700px) { .config-page .cal-body { padding: 12px; } .config-page .cal-panel .config-v2-section-head { padding: 14px; } .config-page .cal-day { height: 70px; padding: 5px; } .config-page .cal-day .cal-label { font-size: 10px; } .config-page .cal-aside { grid-template-columns: 1fr; } .config-page .cal-legend { gap: 7px 10px; } }
+@media(max-width:1050px) { .config-page .cal-layout { grid-template-columns: 1fr; } }
+@media(max-width:700px) { .config-page .cal-body { padding: 12px; } .config-page .cal-panel .config-v2-section-head { padding: 14px; } .config-page .cal-day { height: 70px; padding: 5px; } .config-page .cal-day .cal-label { font-size: 9px; padding: 1px 2px; } .config-page .cal-aside { grid-template-columns: 1fr; }  }
 @media(max-width:430px) { .config-page .cal-weekdays, .config-page .cal-days { gap: 3px; } .config-page .cal-day { height: 62px; } .config-page .cal-calendar-head h3 .note { display: block; margin: 3px 0 0; } .config-page .cal-month-actions { width: 100%; } .config-page .cal-month-actions .button { flex: 1; } }

@@ -37,8 +37,8 @@ async function plan(client,data,input,actor){
     write=()=>client.query('INSERT INTO management_rules(scope,scope_key,values) VALUES($1,$2,$3) ON CONFLICT(scope,scope_key) DO UPDATE SET values=EXCLUDED.values',[input.scope,input.scopeKey,after]);
   }else if(input.kind==='calendar'){
     keys(input.values,['day','working','intervals']);const {day,working}=input.values;if(!validDay(day)||!(working===null||typeof working==='boolean')||!Array.isArray(input.values.intervals)||input.values.intervals.some(x=>!x||typeof x.start!=='string'||typeof x.end!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(x.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(x.end)||x.start>=x.end))fail('请填写有效日期、工作日和有效工作时段');
-    before={day,...(data.calendar[day]??{working:null,intervals:null})};after={day,working,intervals:working===null?null:input.values.intervals};affected=impact(data);
-    write=()=>working===null?client.query('DELETE FROM calendar_days WHERE day=$1',[day]):client.query('INSERT INTO calendar_days(day,working,intervals) VALUES($1,$2,$3) ON CONFLICT(day) DO UPDATE SET working=EXCLUDED.working,intervals=EXCLUDED.intervals',[day,working,JSON.stringify(input.values.intervals)]);
+    before={day,...(data.calendar[day]??{working:null,intervals:null})};after={day,working,intervals:working===null?null:working===false?[]:input.values.intervals};affected=impact(data);
+    write=()=>working===null?client.query('DELETE FROM calendar_days WHERE day=$1',[day]):client.query('INSERT INTO calendar_days(day,working,intervals) VALUES($1,$2,$3) ON CONFLICT(day) DO UPDATE SET working=EXCLUDED.working,intervals=EXCLUDED.intervals',[day,working,JSON.stringify(after.intervals)]);
   }else if(input.kind==='mapping'){
     const binding=data.bindings.find(b=>b.source_project_id===input.projectId);if(!binding)fail('来源项目不存在');
     if(!Array.isArray(input.values)||!input.values.length||input.values.length>500)fail('请选择需要调整的状态映射');

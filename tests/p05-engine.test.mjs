@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {effectiveRules,validateRules,validateEffective,validDay,workingDays,collectionDue,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency,durationDays} from '../app/management-engine.mjs';
+import {effectiveRules,validateRules,validateEffective,validDay,workingDays,calendarHours,collectionDue,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency,durationDays} from '../app/management-engine.mjs';
 const maps={pending:{semantic:'not_started',markers:[]},dev:{semantic:'developing',markers:['development_start']},devEnd:{semantic:'processing',markers:['development_end']},test:{semantic:'testing',markers:['test_start']},testEnd:{semantic:'processing',markers:['test_end']},paused:{semantic:'paused',markers:[]},processing:{semantic:'processing',markers:[]},done:{semantic:'delivered',markers:[]},cancel:{semantic:'non_delivery',markers:[]}};
 const item=(id,type,parent=null,extra={})=>({id,managed_version_id:'v1',source_task_id:id,type_name:type,parent_source_task_id:parent,source_presence:'current',structure_issues:[],source_status_id:'done',...extra});
 test('P05 inheritance resolves each field, restores upstream and rejects combined overlap',()=>{
@@ -9,6 +9,11 @@ test('P05 inheritance resolves each field, restores upstream and rejects combine
  rules=effectiveRules([system,version]);assert.deepEqual(rules.foundation.value,['UI界面']);assert.equal(rules.foundation.source,'system');
  assert.throws(()=>validateRules({concurrency:5},'version'));assert.throws(()=>validateRules({schedules:[{day:2,time:'25:00'}]},'system'));assert.throws(()=>validateRules({schedules:[{day:2,time:'10:00'},{day:2,time:'10:00'}]},'system'));
  assert.throws(()=>validateEffective(effectiveRules([{scope:'version',values:{foundation:['后台']}}])));validateEffective(rules);
+});
+test('holidays ignore retained work intervals; make-up days still count working hours',()=>{
+ const intervals=[{start:'09:00',end:'12:00'}];
+ assert.equal(calendarHours('2026-11-16T01:00:00Z','2026-11-16T04:00:00Z',{'2026-11-16':{working:false,intervals}}),0);
+ assert.equal(calendarHours('2026-11-14T01:00:00Z','2026-11-14T04:00:00Z',{'2026-11-14':{working:true,intervals}}),3);
 });
 test('P05 calendar uses Shanghai dates, special workdays and no non-workday catch-up',()=>{
  assert.equal(validDay('2026-02-30'),false);assert.equal(validDay('2028-02-29'),true);

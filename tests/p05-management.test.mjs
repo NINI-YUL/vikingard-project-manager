@@ -12,6 +12,9 @@ test('P05 PostgreSQL config preview/save, inheritance, role checks, mapping reco
   await syncVersion(pool,version.id,source,{actorId:owner.id,reason:'隔离同步'});
   const projectDb=(await pool.query('SELECT id FROM source_projects')).rows[0].id,root=(await pool.query('SELECT id FROM work_items WHERE source_task_id=$1',[rootId])).rows[0].id;
   const save=async(input,actor=owner)=>{const preview=await changeManagement(pool,actor,input);return changeManagement(pool,actor,{...input,confirmed:true,expectedRevision:preview.revision,previewToken:preview.previewToken},true);};
+  await save({kind:'calendar',values:{day:'2026-11-15',working:false,intervals:[{start:'09:00',end:'12:00'}]},reason:'节假日不计工作时段'});
+  assert.deepEqual((await pool.query("SELECT intervals FROM calendar_days WHERE day='2026-11-15'")).rows[0].intervals,[]);
+  assert.deepEqual((await managementCatalog(pool)).calendar['2026-11-15'].intervals,[]);
   const rule={kind:'rules',scope:'system',scopeKey:'system',values:{foundation:['UI界面'],detail:['后台'],concurrency:3},reason:'明确规则'};
   const preview=await changeManagement(pool,owner,rule);assert.equal(preview.affected.taskCount,2);assert.equal((await pool.query('SELECT count(*)::int AS n FROM management_rules')).rows[0].n,0);
   await save(rule);await save({kind:'rules',scope:'version',scopeKey:version.id,values:{detail:['动效']},reason:'版本例外'});await save({kind:'rules',scope:'requirement',scopeKey:root,values:{schedules:[{day:1,time:'09:00'}]},reason:'需求例外'});

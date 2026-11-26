@@ -1762,6 +1762,7 @@ async function renderConfig(view, current) {
       container.children[index].querySelector('[aria-label="时段开始"]').value = interval.start;
       container.children[index].querySelector('[aria-label="时段结束"]').value = interval.end;
     }
+    control('mg-calendar-working').dispatchEvent(new Event('change'));
     calendarEditor.showModal();
   }
   function renderCalendar() {
@@ -1791,7 +1792,7 @@ async function renderConfig(view, current) {
       const weekday = new Date(day + 'T00:00:00Z').getUTCDay();
       const weekend = weekday === 0 || weekday === 6;
       const entry = catalog.calendar[day], working = entry?.working ?? !weekend;
-      const holiday = Boolean(entry && !working && !weekend);
+      const holiday = Boolean(entry && !working);
       const shift = Boolean(entry && working);
       const stateClass = holiday ? ' holiday' : shift ? ' special shift' : weekend ? ' rest weekend' : ' workday';
       const label = holiday ? '节假日' : shift ? '补班' : weekend ? '周末' : '工作日';
