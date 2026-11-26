@@ -643,9 +643,21 @@ const calendarFixture = {
     assert.match(await acceptanceResponse.text(), /id="management-rules"/);
 
     await useSpace('people');
+    const peopleRegion = page.getByRole('region', { name: '人员与权限', exact: true });
+    assert.deepEqual(await peopleRegion.locator('thead th').allTextContents(), ['人员', '系统权限', '身份状态', '操作']);
+    assert.ok(await peopleRegion.locator('.person-access').count() >= 2);
+    assert.ok(await peopleRegion.locator('.person-map').count() >= 2);
+    await page.getByRole('button', { name: '通知对象', exact: true }).click();
+    const noticeRegion = page.locator('.people-notice-panel');
+    assert.equal(await noticeRegion.locator('.people-notice-conditions > div').count(), 3);
+    assert.deepEqual(await noticeRegion.locator('thead th').allTextContents(), ['通知节点', '接收规则']);
+    await page.getByRole('button', { name: '人员与权限', exact: true }).click();
     const personRow = page.getByRole('region', { name: '人员与权限', exact: true }).locator('tbody tr').filter({ hasText: '测试查看者' });
     await personRow.getByRole('button', { name: '编辑权限', exact: true }).click();
     const personEditor = page.getByRole('dialog', { name: '编辑人员配置', exact: true });
+    assert.equal(await personEditor.locator('.person-dialog-head').count(), 1);
+    assert.equal(await personEditor.locator('.person-dialog-body').count(), 1);
+    assert.equal(await personEditor.locator('.person-dialog-actions').count(), 1);
     await personEditor.getByLabel('系统权限', { exact: true }).selectOption('admin');
     await personEditor.getByRole('button', { name: '取消', exact: true }).click();
     assert.equal(permissionWrites.length, 0);

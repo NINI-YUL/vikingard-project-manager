@@ -884,3 +884,51 @@ body.v2-page {
 .config-page .status-dialog #mg-mappings { font-size:12px; } .config-page .status-dialog #mg-mappings tr { border-top:1px solid #edf0f5; } .config-page .status-dialog #mg-mappings td { padding:12px 10px; vertical-align:middle; } .config-page .status-dialog #mg-mappings select { width:100%; min-height:36px; font-size:12px; } .config-page .status-dialog .status-check { display:inline-flex; align-items:center; gap:5px; margin:3px 5px 3px 0; padding:5px 7px; border:1px solid #e5eaf2; border-radius:6px; font-size:11px; } .config-page .status-dialog .status-check input { width:13px; height:13px; min-height:0; margin:0; } .config-page .status-dialog .status-row-unmapped { background:#fffaf0; } .config-page .status-dialog .status-row-pending { background:#f7f9ff; }
 @media(max-width:1200px){ .config-page .status-facts { grid-template-columns:1fr 1fr; } .config-page .status-recovery-grid { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:700px){ .config-page .status-context { align-items:stretch; } .config-page .status-context .field { min-width:100%; } .config-page .status-mapping-body, .config-page .status-impact-body { padding:14px 16px 16px; } .config-page .status-current-card, .config-page .status-card { padding:16px; } .config-page .status-current-head { align-items:flex-start; flex-wrap:wrap; } .config-page .status-facts { grid-template-columns:minmax(0,1fr); gap:12px; } .config-page .status-facts > div { display:grid; grid-template-columns:88px minmax(0,1fr); gap:8px; } .config-page .status-facts b { margin-top:0; } .config-page .status-dialog { width:calc(100vw - 24px); max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); } .config-page .status-dialog > form { padding:14px 16px 18px; } .config-page .status-dialog #mg-mappings { min-width:620px; } }
+/* V2 people and notices workspace alignment. */
+.config-page .config-v2-shell[data-workspace=people] .config-v2-top h1 { font-size:22px; }
+.config-page .config-v2-shell[data-workspace=people] .config-v2-subtabs { gap:28px; margin-bottom:20px; }
+.config-page .config-v2-shell[data-workspace=people] .config-v2-subtab { font-size:13px; }
+.config-page .config-v2-shell[data-workspace=people] .config-v2-content { padding-top:20px; }
+.config-page .config-v2-shell[data-workspace=people] .config-v2-top .note { font-size:12px; }
+.config-page .people-access-panel, .config-page .people-notice-panel { margin:0; }
+.config-page .people-access-panel > .config-v2-section-head, .config-page .people-notice-panel > .config-v2-section-head { padding:16px 18px; }
+.config-page .people-access-panel > .config-v2-section-head .section-title, .config-page .people-notice-panel > .config-v2-section-head .section-title { font-size:14px; }
+.config-page .people-access-body, .config-page .people-notice-body { padding:0 18px 18px; }
+.config-page .people-table-wrap { margin:0; overflow-x:auto; }
+.config-page .people-table { table-layout:fixed; min-width:620px; }
+.config-page .people-table th { background:#f8fafc; color:#687185; font-size:11px; font-weight:500; padding:12px 16px; }
+.config-page .people-table td { color:#465064; font-size:12px; line-height:1.8; padding:16px; vertical-align:middle; }
+.config-page .people-table th:nth-child(1) { width:34%; } .config-page .people-table th:nth-child(2) { width:19%; } .config-page .people-table th:nth-child(3) { width:22%; } .config-page .people-table th:nth-child(4) { width:25%; }
+.config-page .people-name-cell b { color:#344054; font-size:13px; font-weight:600; }
+.config-page .person-cell-note { margin-top:5px; color:#788295; font-size:11px; line-height:1.8; }
+.config-page .person-access, .config-page .person-map { display:inline-block; padding:2px 7px; border-radius:5px; background:#f0f3f8; color:#687185; font-size:10px; font-weight:500; line-height:1.6; }
+.config-page .person-access.owner, .config-page .person-access.admin { background:#edf2fb; color:#526a9e; }
+.config-page .person-map.valid { background:#edf6f1; color:#327158; } .config-page .person-map.attention { background:#faf3e6; color:#926a34; }
+.config-page .person-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.config-page .person-actions button { min-height:28px; padding:4px 7px; font-size:12px; }
+.config-page .people-access-note { margin:14px 0 0; font-size:11px; line-height:1.85; }
+.config-page .people-acceptance-link { margin-top:14px; }
+.config-page .people-notice-body { padding-top:0; }
+.config-page .people-notice-table { min-width:560px; table-layout:fixed; }
+.config-page .people-notice-table th { padding:12px 18px; font-size:11px; }
+.config-page .people-notice-table th:first-child { width:30%; }
+.config-page .people-notice-table td { padding:20px 18px; font-size:12px; line-height:1.8; vertical-align:middle; }
+.config-page .people-notice-table td:first-child { color:#344054; font-weight:600; }
+.config-page .people-notice-conditions { display:flex; flex-direction:column; gap:12px; padding:18px; background:#fafbfd; border-top:1px solid #edf0f5; }
+.config-page .people-notice-conditions > div { display:flex; align-items:baseline; gap:16px; font-size:11px; line-height:1.85; }
+.config-page .people-notice-conditions > div > span:first-child { flex:0 0 66px; color:#788295; }
+.config-page .people-notice-conditions > div > span:last-child { color:#687185; }
+.config-page .person-dialog { width:min(840px,calc(100vw - 32px)); max-height:calc(100dvh - 40px); padding:0; overflow:hidden; }
+.config-page .person-dialog[open] { display:flex; flex-direction:column; }
+.config-page .person-dialog > .person-dialog-head { flex:none; margin:0; padding:18px 22px; background:#fafbfd; border-bottom:1px solid #edf0f5; font-size:17px; }
+.config-page .person-dialog > form { display:flex; flex-direction:column; min-height:0; }
+.config-page .person-dialog-body { min-height:0; overflow:auto; padding:18px 22px; }
+.config-page .person-dialog-body .field { display:block; margin:0 0 14px; font-size:12px; }
+.config-page .person-dialog-body .field > span { display:block; margin-bottom:6px; color:#687185; font-size:11px; }
+.config-page .person-dialog-body .field :is(input:not([type=checkbox]),select,textarea) { display:block; width:100%; min-height:36px; margin:0; }
+.config-page .person-dialog-body .field input[type=checkbox] { width:13px; height:13px; min-height:0; margin-right:6px; accent-color:#4c6cda; }
+.config-page .person-dialog-note { margin:4px 0 0; padding:12px 14px; background:#f8fafc; border:1px solid #edf0f5; border-radius:7px; font-size:11px; line-height:1.85; }
+.config-page .person-dialog-body .error-box { margin:12px 0 0; font-size:12px; line-height:1.8; }
+.config-page .person-dialog-actions { flex:none; justify-content:flex-end; margin:0; padding:14px 22px; border-top:1px solid #edf0f5; background:#fafbfd; }
+@media(max-width:900px){ .config-page .people-table td { padding:10px 12px; } .config-page .people-table td b { font-size:12px; } .config-page .people-notice-table td { padding:16px 12px; } }
+@media(max-width:600px){ .config-page .people-access-body, .config-page .people-notice-body { padding:0 14px 14px; } .config-page .people-table, .config-page .people-notice-table { min-width:560px; } .config-page .person-actions { gap:6px; } .config-page .person-dialog { width:calc(100vw - 24px); max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); } .config-page .person-dialog > .person-dialog-head { padding:16px; } .config-page .person-dialog-body { padding:14px; } .config-page .person-dialog-actions { padding:12px 14px; } .config-page .people-notice-conditions > div { align-items:flex-start; gap:10px; } .config-page .people-notice-conditions > div > span:first-child { flex-basis:60px; } }

@@ -1694,11 +1694,19 @@ async function renderConfig(view, current) {
   impactPanel.body.append(currentCard, recoveryGrid);
   pages['status/impact'] = impactPanel.box;
   const peoplePanel = panel('人员与权限', '业务角色与系统权限分别维护；权限和身份状态维护仅对所有者开放。');
-  const peopleBody = node('div'); peoplePanel.body.append(peopleBody, link('身份与权限维护', '/acceptance', 'button small'));
+  peoplePanel.box.classList.add('people-access-panel');
+  peoplePanel.body.classList.add('people-access-body');
+  const peopleBody = node('div', 'people-list'); peoplePanel.body.append(peopleBody, link('身份与权限维护', '/acceptance', 'button small people-acceptance-link'));
   pages['people/people'] = peoplePanel.box;
   const noticePanel = panel('通知节点与接收规则', '只读展示已确认规则；本页操作不会发送消息。');
+  noticePanel.box.classList.add('people-notice-panel');
+  noticePanel.body.classList.add('people-notice-body');
   const noticeRows = [['基础流程完成', '核心需求参与者中的测试、运营、策划、PM'], ['细节完整完成', '核心需求参与者中的测试、运营、策划、PM'], ['优化需求完成', '相关策划角色']].map(cells => { const row = node('tr'); for (const cell of cells) row.append(node('td', null, cell)); return row; });
-  noticePanel.body.append(buildTable('通知节点与接收规则', ['通知节点', '接收规则'], noticeRows, ''), node('p', 'note', '实际投递还需满足通知节点触发、需求关系和身份映射已确认。系统权限不增加通知资格；无法投递的人员不会被自动替换。具体接收人应在对应需求范围核对。'));
+  const noticeTable = buildTable('通知节点与接收规则', ['通知节点', '接收规则'], noticeRows, '');
+  noticeTable.classList.add('cfg-table-notices'); noticeTable.querySelector('table')?.classList.add('people-notice-table');
+  const noticeConditions = node('div', 'people-notice-conditions');
+  for (const [label, value] of [['投递条件', '通知节点已触发、需求关系符合规则、身份映射已确认。'], ['权限边界', '系统权限不增加通知资格；无法投递时，不自动替换接收人。'], ['接收人核对', '在对应需求中查看具体接收人；本页不逐人模拟或推算人数。']]) { const line = node('div'); line.append(node('span', null, label), node('span', null, value)); noticeConditions.append(line); }
+  noticePanel.body.append(noticeTable, noticeConditions);
   pages['people/notice'] = noticePanel.box;
   const feedback = control('mg-feedback');
   const refresh = control('mg-refresh'); refresh.textContent = '刷新配置'; refresh.className = 'button small';
@@ -1943,10 +1951,11 @@ async function renderConfig(view, current) {
     } catch (error) { enrollment.replaceChildren(errorCard(error.message), button('关闭', () => enrollment.close(), 'button small')); }
   }
   const enroll = button('选择版本', openEnrollment, 'button primary'); enroll.hidden = !editable; versionsPanel.head.append(enroll);
-  const personEditor = node('dialog', 'config-v2-dialog'); personEditor.setAttribute('aria-label', '编辑人员配置'); forms.append(personEditor);
+  const personEditor = node('dialog', 'config-v2-dialog person-dialog'); personEditor.setAttribute('aria-label', '编辑人员配置'); forms.append(personEditor);
   function openPersonEditor(person, kind) {
     const form = node('form', 'config-person-editor');
-    const field = (title, input) => { input.setAttribute('aria-label', title); const label = node('label', 'field'); label.append(node('span', null, title), input); form.append(label); };
+    const body = node('div', 'person-dialog-body');
+    const field = (title, input) => { input.setAttribute('aria-label', title); const label = node('label', 'field'); label.append(node('span', null, title), input); body.append(label); };
     let role, active, mapping, name, identity, confirmed;
     if (!person) {
       name = node('input', 'input'); name.required = true; name.maxLength = 100; field('显示姓名', name);
@@ -1961,10 +1970,11 @@ async function renderConfig(view, current) {
       mapping = node('input'); mapping.type = 'checkbox'; mapping.checked = person.mappingEnabled; field('启用身份映射', mapping);
     }
     const reason = node('textarea', 'input'); reason.required = true; reason.maxLength = 500; field('变更依据与原因', reason);
-    form.append(node('p', 'note', person ? '保存权限或身份变更会撤销该人员旧会话。最后一名有效所有者不能降级或停用。' : '登记后无后台权限，须由所有者明确授权。不按姓名自动匹配身份。'));
+    body.append(node('p', 'note person-dialog-note', person ? '保存权限或身份变更会撤销该人员旧会话。最后一名有效所有者不能降级或停用。' : '登记后无后台权限，须由所有者明确授权。不按姓名自动匹配身份。'));
     const error = node('p', 'error-box'); error.hidden = true; error.setAttribute('role', 'alert');
-    const actions = node('div', 'section-actions'); const save = button('确认保存', () => {}, 'button primary'); save.type = 'submit';
-    actions.append(button('取消', () => personEditor.close(), 'button small'), save); form.append(error, actions);
+    body.append(error); form.append(body);
+    const actions = node('div', 'section-actions person-dialog-actions'); const save = button('确认保存', () => {}, 'button primary'); save.type = 'submit';
+    actions.append(button('取消', () => personEditor.close(), 'button small'), save); form.append(actions);
     form.addEventListener('submit', async event => {
       event.preventDefault(); if (!form.reportValidity()) return; save.disabled = true;
       try {
@@ -1980,7 +1990,7 @@ async function renderConfig(view, current) {
       } catch (failure) { error.hidden = false; error.textContent = failure.message + '；请求中断时请先刷新核对结果，不要重复提交。'; }
       finally { save.disabled = false; }
     });
-    personEditor.replaceChildren(node('h2', 'section-title', person ? person.displayName + (kind === 'role' ? ' · 系统权限' : ' · 身份配置') : '登记已核实身份'), form);
+    personEditor.replaceChildren(node('h2', 'section-title person-dialog-head', person ? person.displayName + (kind === 'role' ? ' · 系统权限' : ' · 身份配置') : '登记已核实身份'), form);
     personEditor.showModal();
   }
   const registerPerson = button('登记已核实身份', () => openPersonEditor(null), 'button primary');
@@ -1991,10 +2001,16 @@ async function renderConfig(view, current) {
       const records = await api('/api/access');
       const rows = records.map(person => {
         const row = node('tr'); const actions = node('td', 'config-row-actions');
+        actions.classList.add('person-actions');
+        const personCell = node('td', 'person-name-cell'); personCell.append(node('b', null, person.displayName), node('div', 'person-cell-note', person.active && person.mappingEnabled && person.confirmed ? '身份映射已确认' : '身份映射待核对'));
+        const access = ROLE_NAMES[person.role] || '未知'; const accessClass = person.role === 'owner' || person.role === 'admin' ? person.role : 'neutral';
+        const accessCell = node('td'); accessCell.append(node('span', 'person-access ' + accessClass, access));
+        const valid = person.active && person.mappingEnabled && person.confirmed; const mapCell = node('td'); mapCell.append(node('span', 'person-map ' + (valid ? 'valid' : 'attention'), valid ? '身份有效' : '停用或未确认'));
         actions.append(button('编辑权限', () => openPersonEditor(person, 'role'), 'button small'), button('编辑身份', () => openPersonEditor(person, 'identity'), 'button small'));
-        row.append(node('td', null, person.displayName), node('td', null, ROLE_NAMES[person.role] || '未知'), node('td', null, person.active && person.mappingEnabled && person.confirmed ? '身份有效' : '停用或未确认'), actions); return row;
+        row.append(personCell, accessCell, mapCell, actions); return row;
       });
-      peopleBody.replaceChildren(buildTable('人员与权限', ['人员', '系统权限', '身份状态', '操作'], rows, '暂无人员。'), node('p', 'note', '业务角色编辑和需求范围接收人预览尚未接入。系统权限不自动推定业务角色。'));
+      const peopleTable = buildTable('人员与权限', ['人员', '系统权限', '身份状态', '操作'], rows, '暂无人员。'); peopleTable.classList.add('people-table-wrap'); peopleTable.querySelector('table')?.classList.add('people-table');
+      peopleBody.replaceChildren(peopleTable, node('p', 'note people-access-note', '业务角色编辑和需求范围接收人预览尚未接入。系统权限不自动推定业务角色。'));
     } catch (error) { peopleBody.replaceChildren(errorCard(error.message, showPeople)); }
   }
   management = await setupManagement(state.actor, (path, method = 'GET', value) => api(path, { method, body: value }), layout, {
