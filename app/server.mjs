@@ -101,8 +101,10 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
       }
       if (req.method === 'GET' && path === '/api/source-candidates') {
         requireRole(actor,'admin');
+        if (!source) return json(res,200,[]);
+        if (source.listVersions) return json(res,200,await source.listVersions());
         const choices=[];
-        for (const group of source?.candidates ?? []) for (const versionId of group.versionIds) choices.push(await source.getVersion(group.projectId,versionId));
+        for (const group of source.candidates ?? []) for (const versionId of group.versionIds) choices.push(await source.getVersion(group.projectId,versionId));
         return json(res,200,choices);
       }
       if (req.method === 'GET' && path === '/api/versions') {

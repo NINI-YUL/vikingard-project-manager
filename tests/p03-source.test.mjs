@@ -6,7 +6,7 @@ const config={cliPath:'C:/fake/teambition-cli.exe',organizationId:org,projectId:
 function fake(overrides={}) {
   return async(action,args)=>{
     if(overrides[action])return overrides[action](args);
-    const data={query:[{id:project,organizationId:org,name:'测试项目'}],'sprint-query':[{id:version,projectId:project,name:'测试迭代'}],'sfc-query':[{_id:type,name:'子需求',_taskflowId:'2'.repeat(24)}],'taskflow-query':[{id:'2'.repeat(24),name:'子需求中文工作流'}],'tfs-query':[{id:status,name:'待处理'}],'customfield-query':[{_id:category,name:'工单分类',type:'dropDown'},{_id:fn,name:'职能',type:'dropDown',choices:[{value:'UI界面'},{value:'UI图标'}]}],'task-activity':[],'task-query':[{id:'3'.repeat(24),projectId:project,sprintId:version,isArchived:false,sfcId:type,tfsId:status,content:'测试',customfields:[{cfId:fn,value:[{title:'客户端'}]}]}]};
+    const data={query:[{id:project,organizationId:org,name:'测试项目'}],'sprint-query':args.includes('--id')?[{id:version,projectId:project,name:'测试迭代'}]:[{id:version,projectId:project,name:'测试迭代'},{id:'9'.repeat(24),projectId:project,name:'新迭代'}],'sfc-query':[{_id:type,name:'子需求',_taskflowId:'2'.repeat(24)}],'taskflow-query':[{id:'2'.repeat(24),name:'子需求中文工作流'}],'tfs-query':[{id:status,name:'待处理'}],'customfield-query':[{_id:category,name:'工单分类',type:'dropDown'},{_id:fn,name:'职能',type:'dropDown',choices:[{value:'UI界面'},{value:'UI图标'}]}],'task-activity':[],'task-query':[{id:'3'.repeat(24),projectId:project,sprintId:version,isArchived:false,sfcId:type,tfsId:status,content:'测试',customfields:[{cfId:fn,value:[{title:'客户端'}]}]}]};
     return {code:200,result:data[action],nextPageToken:''};
   };
 }
@@ -14,6 +14,7 @@ test('P03 actual reader resolves metadata, verifies fields, maps source definiti
   let args;
   const source=createTeambitionSource(config,fake({'task-query':async a=>{args=a;return fake()('task-query',a);}}));
   assert.equal((await source.getVersion(project,version)).versionName,'测试迭代');
+  assert.deepEqual((await source.listVersions()).map(item=>item.versionName),['测试迭代','新迭代']);
   const snapshot=await source.read({projectId:project,sourceVersionId:version});
   assert.equal(snapshot.items[0].typeName,'子需求');assert.equal(snapshot.items[0].functionName,'客户端');assert.deepEqual(snapshot.items[0].structureIssues,[]);
   assert.deepEqual(snapshot.binding.functionOptions,['UI界面','UI图标']);assert.equal(snapshot.binding.organizationId,org);assert.ok(args.includes(`sprintId = '${version}' AND isArchived = false ORDER BY updated DESC`));
@@ -43,4 +44,5 @@ test('P03 command runner uses fixed actions, no shell, finite execution and supp
   const invalid=createCliQuery(config.cliPath,async()=>({stdout:'{"code":403,"errorMessage":"FAKE_SECRET"}'}));
   await assert.rejects(invalid('query',[]),e=>!e.stack.includes('FAKE_SECRET'));
   assert.throws(()=>validateTeambitionConfig({...config,cliPath:'cmd.exe & other'}));
+  assert.doesNotThrow(()=>validateTeambitionConfig({...config,versionIds:undefined}));
 });
