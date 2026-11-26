@@ -1624,12 +1624,29 @@ async function renderConfig(view, current) {
   const extraDetails = [...forms.querySelectorAll(':scope > details')];
   for (const details of extraDetails) { details.classList.add('config-v2-section', 'config-extra'); rulesPage.append(details); }
   pages['version/rules'] = rulesPage;
-  const calendarPanel = panel('公司工作日历', '默认北京时间周一至周五；调休和特殊工作时段以已保存配置为准。');
+  const calendarPanel = panel('公司工作日历', '点任意日期设置类型与说明。');
+  calendarPanel.box.classList.add('cal-panel');
+  calendarPanel.body.classList.add('cal-body');
   const calendarBoard = node('div', 'config-calendar');
-  calendarPanel.body.append(calendarNote, calendarBoard, calendarList);
+  const calendarIntro = node('div', 'cal-intro');
+  calendarIntro.append(node('b', null, '工作日是日期单位'), document.createTextNode('，不表示个人工时，也不录入半天。日期调整影响计划周期、到期判断和开发 / 测试历时；正式修改前须展示具体受影响对象，历史复盘保留上线时口径。'));
+  const specialPanel = panel('本月特殊日期', '管理员可新增 / 修改。');
+  specialPanel.box.classList.add('cal-panel');
+  specialPanel.body.append(calendarList);
+  const defaultPanel = panel('默认工作周');
+  defaultPanel.box.classList.add('cal-panel');
+  const defaults = node('div', 'cal-defaults');
+  for (const [label, value] of [['默认工作日', '周一 ~ 周五'], ['默认休息日', '周六 / 周日'], ['历史口径', '历史复盘保留上线时口径']]) {
+    const item = node('div'); item.append(node('span', null, label), node('b', null, value)); defaults.append(item);
+  }
+  defaultPanel.body.append(defaults);
+  const calendarAside = node('aside', 'cal-aside'); calendarAside.append(specialPanel.box, defaultPanel.box);
+  const calendarLayout = node('div', 'cal-layout'); calendarLayout.append(calendarPanel.box, calendarAside);
+  const calendarWorkspace = node('div', 'cal-workspace'); calendarWorkspace.append(calendarIntro, calendarLayout);
+  calendarPanel.body.append(calendarBoard);
   const editCalendar = button('编辑日期', () => openCalendarDate(), 'button primary');
   editCalendar.hidden = !editable; calendarPanel.head.append(editCalendar);
-  pages['version/calendar'] = calendarPanel.box;
+  pages['version/calendar'] = calendarWorkspace;
   const statusPanel = panel('状态语义映射', '保留 Teambition 原始状态，用统一语义驱动完成判断、历时和风险通知。');
   const statusContext = node('div', 'config-rule-controls');
   const projectField = node('div', 'field'), workflowField = node('div', 'field');
@@ -1750,28 +1767,39 @@ async function renderConfig(view, current) {
   function renderCalendar() {
     if (!catalog) return;
     calendarBoard.replaceChildren();
-    const controls = node('div', 'section-head');
+    const controls = node('div', 'cal-calendar-head');
     const move = offset => {
       const date = new Date(calendarMonth + '-01T00:00:00Z'); date.setUTCMonth(date.getUTCMonth() + offset);
       calendarMonth = date.toISOString().slice(0, 7); renderCalendar();
     };
-    controls.append(button('上个月', () => move(-1), 'button small'), node('b', null, calendarMonth), button('下个月', () => move(1), 'button small'));
-    const weekdays = node('div', 'config-calendar-week');
+    const [year, month] = calendarMonth.split('-');
+    const title = node('h3'); title.append(document.createTextNode(year + ' 年 ' + Number(month) + ' 月 '), node('span', 'note', '点任意日期设置类型与说明'));
+    const actions = node('div', 'cal-month-actions'); actions.append(button('‹ 上月', () => move(-1), 'button small'), button('下月 ›', () => move(1), 'button small'));
+    controls.append(title, actions);
+    const legend = node('div', 'cal-legend'); legend.setAttribute('aria-label', '日期类型图例');
+    for (const [className, label] of [['workday', '工作日'], ['weekend', '周末'], ['holiday', '节假日'], ['shift', '补班']]) {
+      const item = node('span'); item.append(node('i', 'cal-swatch ' + className), document.createTextNode(label)); legend.append(item);
+    }
+    const weekdays = node('div', 'config-calendar-week cal-weekdays');
     for (const day of ['日','一','二','三','四','五','六']) weekdays.append(node('span', null, day));
-    const days = node('div', 'config-calendar-days');
+    const days = node('div', 'config-calendar-days cal-days');
     const start = new Date(calendarMonth + '-01T00:00:00Z');
     for (let i = 0; i < start.getUTCDay(); i++) days.append(node('span'));
     const end = new Date(start); end.setUTCMonth(end.getUTCMonth() + 1); end.setUTCDate(0);
     for (let date = 1; date <= end.getUTCDate(); date++) {
       const day = calendarMonth + '-' + String(date).padStart(2, '0');
       const weekday = new Date(day + 'T00:00:00Z').getUTCDay();
-      const entry = catalog.calendar[day], working = entry?.working ?? (weekday !== 0 && weekday !== 6);
-      const label = entry ? working ? '特殊工作日' : '休息日' : working ? '工作日' : '休息日';
-      const cell = button('', () => openCalendarDate(day), 'config-calendar-day' + (!working ? ' rest' : entry ? ' special' : ''));
+      const weekend = weekday === 0 || weekday === 6;
+      const entry = catalog.calendar[day], working = entry?.working ?? !weekend;
+      const holiday = Boolean(entry && !working && !weekend);
+      const shift = Boolean(entry && working);
+      const stateClass = holiday ? ' holiday' : shift ? ' special shift' : weekend ? ' rest weekend' : ' workday';
+      const label = holiday ? '节假日' : shift ? '补班' : weekend ? '周末' : '工作日';
+      const cell = button('', () => openCalendarDate(day), 'config-calendar-day cal-day' + stateClass);
       cell.setAttribute('aria-label', day + ' ' + label); cell.disabled = !editable;
-      cell.append(node('b', null, date), node('small', null, label)); days.append(cell);
+      cell.append(node('strong', null, date), node('span', 'cal-label', label)); days.append(cell);
     }
-    calendarBoard.append(controls, weekdays, days);
+    calendarBoard.append(controls, legend, weekdays, days);
   }
   async function showVersions() {
     const loadingBox = loading('正在读取版本范围…'); versionsPanel.body.replaceChildren(loadingBox);
