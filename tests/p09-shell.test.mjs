@@ -283,3 +283,18 @@ test('actual time inputs use Beijing minutes and completed labels include verifi
  const actual={state:'done',start:'2026-11-18T02:00:00Z',end:'2026-11-18T03:00:00Z',ended:true,completed:true,workingDays:0.1};assert.equal(timelineActualText(actual),'实：11.18 - 11.18 · 已完成 0.1 个工作日');
  const unknown=timelineActualText({...actual,workingDays:null,durationUnverified:true});assert.match(unknown,/已完成 · 历时待核实/);assert.doesNotMatch(unknown,/0 个工作日/);
 });
+
+
+test('actual timeline rejects future start minutes today and keeps legacy date-only starts', () => {
+  const make = rounds => ({ semantic: 'developing', timing: { development: { unknown: false, workingDays: 0, rounds } } });
+  const at = '2026-11-27T17:00:00+08:00';
+  const item = make([{ start: at, end: null }]), before = structuredClone(item);
+  const early = actualTimelineSpan(item, '2026-11-27', new Date('2026-11-27T14:00:00+08:00'));
+  assert.equal(early.state, 'not_started');assert.equal(timelineActualText(early), '实：未开始');
+  assert.equal(actualTimelineSpan(item, '2026-11-27', new Date(at)).state, 'doing');
+  assert.deepEqual(item, before);
+  const legacy = make([{ start: '2026-11-27', end: null }]);
+  assert.equal(actualTimelineSpan(legacy, '2026-11-27', new Date('2026-11-27T00:01:00+08:00')).state, 'doing');
+  const reopened = make([{ start: '2026-11-26T10:00:00+08:00', end: '2026-11-26T18:00:00+08:00' }, { start: at, end: null }]);
+  assert.equal(actualTimelineSpan(reopened, '2026-11-27', new Date('2026-11-27T14:00:00+08:00')).state, 'unknown');
+});

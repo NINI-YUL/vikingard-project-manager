@@ -123,6 +123,7 @@ const calendarFixture = {
             build('single-day', { semantic: 'delivered', rawStatus: '已完成', timing: { development: { unknown: false, workingDays: 1, rounds: [{ start: '2026-11-23', end: '2026-11-23' }] } } }),
             build('unplanned', { plannedStartAt: null, plannedDueAt: null, planWorkingDays: null, timing: { development: { unknown: false, workingDays: 2, rounds: [{ start: '2026-11-18', end: null }] } } }),
             build('future-start', { timing: { development: { unknown: false, rounds: [{ start: '2026-12-15', end: null }] } } }),
+            build('future-today', { timing: { development: { unknown: false, workingDays: 0, rounds: [{ start: '2026-11-27T17:00:00+08:00', end: null }] } } }),
             build('pending', { semantic: 'not_started', rawStatus: '未开始', timing: { development: { unknown: true, rounds: [] } } }),
             build('unknown-time', { timing: { development: { unknown: true, rounds: [{ start: '2026-11-19', end: null }] } } }),
             build('reopened', { timing: { development: { unknown: false, workingDays: 4.5, rounds: [{ start: '2026-11-19', end: '2026-11-20' }, { start: '2026-11-26', end: null }] } } }),
@@ -504,6 +505,7 @@ const calendarFixture = {
       assert.match(byTitle.reopened.label, /已进行 4.5 工作日/);
       assert.match(byTitle.testing.label, /实：11.25 - /);
       assert.match(byTitle.pending.label, /实：未开始/);
+      assert.match(byTitle['future-today'].label, /实：未开始/);
       assert.equal(byTitle.pending.pendingColor, 'rgb(152, 162, 179)');
       assert.match(byTitle['unknown-time'].label, /实：实际时间不可判断/);
       assert.equal(byTitle['single-day'].tone, 'rgb(112, 169, 141)');

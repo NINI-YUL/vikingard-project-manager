@@ -137,7 +137,7 @@ function timelineTone(item) {
   return item.semantic ? 'active' : 'unknown';
 }
 
-export function actualTimelineSpan(item, todayKey = dayKey(new Date())) {
+export function actualTimelineSpan(item, todayKey = dayKey(new Date()), now = new Date()) {
   const timing = item.typeName?.includes('测试') ? item.timing?.test : item.timing?.development;
   const rounds = Array.isArray(timing?.rounds) ? timing.rounds : [];
   if (!rounds.length) return { state: item.semantic === 'not_started' ? 'not_started' : 'unknown' };
@@ -147,8 +147,9 @@ export function actualTimelineSpan(item, todayKey = dayKey(new Date())) {
     if (!start || round.unknown || (round.end != null && (!end || end < start))) return { state: 'unknown' };
   }
   const start = rounds[0].start, startKey = dayKey(start);
-  if (startKey > todayKey) return { state: 'not_started' };
-  if (rounds.some(round => dayKey(round.start) > todayKey)) return { state: 'unknown' };
+  const startsLater = value => dayKey(value) > todayKey || (dayKey(value) === todayKey && !/^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(value) > new Date(now));
+  if (startsLater(start)) return { state: 'not_started' };
+  if (rounds.some(round => startsLater(round.start))) return { state: 'unknown' };
   const end = rounds.at(-1).end ?? null, endKey = end ? dayKey(end) : todayKey;
   if (endKey < startKey) return { state: 'unknown' };
   const ended = end !== null;
