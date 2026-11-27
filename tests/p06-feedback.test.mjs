@@ -1,3 +1,4 @@
+import {managementResults} from '../app/management.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes,randomUUID} from 'node:crypto';
@@ -29,7 +30,7 @@ test('P06 PostgreSQL formal ingestion, revisions, eligibility, atomic failure, r
   const version=await enrollVersion(pool,{corpId:'fake',projectId:project,projectName:'隔离项目',versionId:sprint,versionName:'P06 隔离',ownerId:owner.id,reason:'隔离纳入'},owner.id);
   await pool.query('UPDATE tracking_periods SET started_at=$1',[new Date(baseTime-100000)]);
   let executor='tb-worker',status='active',title='核心专业工作',readFails=false;
-  const source={read:async()=>{if(readFails)throw new Error('fake');return {items:[{sourceTaskId:root,title:'核心需求',typeName:'需求',sourceStatusId:'active',status:'进行中',rawSource:{id:root,projectId:project,uniqueId:1,isArchived:false}},{sourceTaskId:task,visibleKey:'2',title,typeName:'子需求',functionName:'UI界面',parentSourceTaskId:root,sourceStatusId:status,status:'进行中',executorSourceId:executor,isDone:status!=='active',rawSource:{id:task,projectId:project,uniqueId:2,isArchived:false}}],activities:[],binding:{uniqueIdPrefix:'vkt',organizationId:'fake',categoryFieldId:'category',functionFieldId:'function',typeNames:{root:'需求',task:'子需求'},statusNames:{active:'进行中',done:'已完成'}}};}};
+  const source={read:async()=>{if(readFails)throw new Error('fake');return {items:[{sourceTaskId:root,title:'核心需求',typeName:'需求',sourceStatusId:'active',status:'进行中',rawSource:{id:root,projectId:project,uniqueId:1,isArchived:false}},{sourceTaskId:task,visibleKey:'2',title,typeName:'子需求',functionName:'UI界面',parentSourceTaskId:root,sourceStatusId:status,status:'进行中',executorSourceId:executor,plannedStartAt:'2026-11-02',plannedDueAt:'2026-11-13',isDone:status!=='active',rawSource:{id:task,projectId:project,uniqueId:2,isArchived:false}}],activities:[],binding:{uniqueIdPrefix:'vkt',organizationId:'fake',categoryFieldId:'category',functionFieldId:'function',typeNames:{root:'需求',task:'子需求'},statusNames:{active:'进行中',done:'已完成'}}};}};
   await syncVersion(pool,version.id,source.read,{actorId:owner.id,reason:'初始同步'});
   const projectId=(await pool.query('SELECT id FROM source_projects')).rows[0].id,workId=(await pool.query('SELECT id FROM work_items WHERE source_task_id=$1',[task])).rows[0].id;
   await pool.query("INSERT INTO status_mappings(source_project_id,status_id,semantic,recovery) VALUES($1,'active','developing','verified'),($1,'done','delivered','verified')",[projectId]);
@@ -50,6 +51,12 @@ test('P06 PostgreSQL formal ingestion, revisions, eligibility, atomic failure, r
   const first=raw('first',20),second=raw('second',70,baseTime+1000);
   await t.test('latest valid platform creation wins; wrong newer records never cover it; old notification link is allowed',async()=>{
     await ingest([first,second,raw('bad',99,baseTime+2000,{'任务':'wrong'})]);assert.equal((await current()).progressPercent,70);
+    const validationsBefore=await count('feedback_validations');
+    const managed=await managementResults(pool,version.id);
+    assert.equal(managed.items.find(i=>i.id===workId).risk.level,'watch');
+    assert.equal(managed.items.find(i=>i.id===workId).risk.lagPercentagePoints,30);
+    assert.equal(managed.requirements[0].risk.level,'watch');
+    assert.equal(await count('feedback_validations'),validationsBefore,'management reads must not revalidate/write feedback');
     assert.equal(await count('valid_feedback_history'),2);
     const before=await count('feedback_revisions');await ingest([first,second,raw('bad',99,baseTime+2000,{'任务':'wrong'})]);assert.equal(await count('feedback_revisions'),before);assert.equal(await count('valid_feedback_history'),2);
   });
@@ -100,6 +107,7 @@ test('P06 PostgreSQL formal ingestion, revisions, eligibility, atomic failure, r
     let review=(await feedbackOverview(pool,owner,version.id)).validations.find(v=>v.recordId==='risk');assert.equal(review.verdict,'review');
     await approveFeedbackReview(pool,owner,{validationId:review.validationId,confirmed:true,reason:'已核对原因、影响与所需协助'});assert.equal((await current()).progressPercent,85);
     await ingest([first,second,risk]);assert.equal((await current()).progressPercent,85);
+    const managedRisk=await managementResults(pool,version.id);assert.equal(managedRisk.items.find(i=>i.id===workId).risk.level,'high');assert.equal(managedRisk.requirements[0].risk.level,'high');
     const olderPending=raw('older-pending-risk',30,baseTime+8700,{'当前情况':{name:'存在风险'},'风险原因':'原因','预估延期时间':'1天','所需协助':'否'});
     await ingest([first,second,risk,olderPending]);
     let pending=(await feedbackOverview(pool,owner,version.id)).pendingReviews;

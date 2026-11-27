@@ -38,13 +38,19 @@ facts[1].semantic = 'delivered';
 facts[1].rawStatus = '已完成';
 facts[1].timing.development = { unknown: false, workingDays: 3, rounds: [{ start: '2026-11-19T02:00:00Z', end: '2026-11-24T02:00:00Z', unknown: false }] };
 facts[2].timing.development = { unknown: false, workingDays: 2, rounds: [{ start: '2026-11-25T02:00:00Z', end: null, unknown: false }] };
+facts[1].risk={level:'normal',reason:'工单已结束',feedback:null};
+facts[2].risk={level:'high',reason:'有效表单反馈：存在风险',feedback:{progressPercent:45,submittedAt:'2026-11-23T10:00:00+08:00',situation:'存在风险',note:'风险原因：接口延期\n预估延期时间：2天\n所需协助：接口联调'},plannedProgressPercent:72,lagPercentagePoints:27};
+facts[2].executorPersonId='person-a';facts[2].executorSourceId='source-a';
+facts[5].risk={level:'watch',reason:'反馈落后提交时的计划进度达到20个百分点',feedback:{progressPercent:40,submittedAt:'2026-11-23T10:00:00+08:00',situation:'进度正常',note:''},plannedProgressPercent:60,lagPercentagePoints:20};
+facts[5].executorPersonId='person-b';facts[5].executorSourceId='source-b';
 facts[0].key = '107541';
 facts[4].title = '第二个核心需求';
 facts[4].key = '107550';
 facts[5].parentSourceTaskId = 'root-2';
+facts[5].requirementTitle = '第二个核心需求';
 function management(index) {
   const requirement = {
-    id: 'root', title: '测试核心需求',
+    id: 'root', title: '测试核心需求', risk:{level:'high',high:1,watch:0,unknown:0},
     stages: {
       foundation: { calculable: true, complete: false, completedCount: 0, totalCount: 2, incompleteFunctions: ['UI界面', '客户端'], missingFunctions: ['客户端'], blockedTaskCount: 2 },
       detail: { calculable: true, complete: false, completedCount: 0, totalCount: 3, incompleteFunctions: ['UI界面', '客户端', 'UI图标'], missingFunctions: ['UI图标'], blockedTaskCount: 3 },
@@ -52,7 +58,7 @@ function management(index) {
     }
   };
   const secondRequirement = {
-    id: 'root-2', title: '第二个核心需求',
+    id: 'root-2', title: '第二个核心需求', risk:{level:'watch',high:0,watch:1,unknown:0},
     stages: {
       foundation: { calculable: true, complete: true, completedCount: 1, totalCount: 1, incompleteFunctions: [], missingFunctions: [], blockedTaskCount: 0 },
       detail: { calculable: true, complete: true, completedCount: 1, totalCount: 1, incompleteFunctions: [], missingFunctions: [], blockedTaskCount: 0 },
@@ -180,6 +186,19 @@ const calendarFixture = {
     assert.equal(await page.locator('#tb-sync').isVisible(), false);
     assert.equal(await metric(3).innerText(), '2');
     assert.equal(await metric(4).innerText(), '1');
+    assert.deepEqual(await page.locator('.metrics .metric-value').allTextContents(),['1','1','2','2','1']);
+    assert.equal(await page.locator('.action-risk').count(),2);assert.equal(await page.locator('.action-risk[open]').count(),2);
+    assert.equal(await page.locator('.action-risk-owner').count(),2,'same display names must not merge distinct people');
+    assert.equal(await page.locator('.action-risk-owner > summary .action-owner-signals').count(),2,'counts stay visible while task lists are collapsed');
+    assert.match(await page.locator('.action-risk.high').innerText(),/接口延期/);
+    assert.match(await page.locator('.action-risk.high').innerText(),/提交时计划 72%/);
+    for(const width of [375,768,1440]){
+      await page.setViewportSize({width,height:1000});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,width+'px action risk page has no horizontal overflow');
+      await page.screenshot({path:path.join(output,'p09-risk-'+width+'.png'),fullPage:true});
+    }
+    await page.locator('.action-risk > summary').first().click();assert.equal(await page.locator('.action-risk[open]').count(),1);
+    await page.locator('.action-risk > summary').first().press('Enter');assert.equal(await page.locator('.action-risk[open]').count(),2);
     await page.screenshot({ path: path.join(output, 'p09-aligned-desktop.png'), fullPage: true });
     await page.selectOption('#version-select', versionIds[0]);
     await page.waitForFunction(() => document.querySelectorAll('.metric-value')[3].textContent === '1');
@@ -203,8 +222,8 @@ const calendarFixture = {
     await page.locator('.version-workspace').waitFor();
     assert.equal(await page.locator('.version-rail-item').count(), 2);
     assert.equal(await page.locator('.version-rail-item.active').innerText(), '浏览器测试版本 1\n1 个核心需求');
-    assert.match(await page.locator('.version-detail-pane').innerText(), /风险需求\s*待接入/);
-    assert.deepEqual(await page.locator('.version-kpis .metric-value').allTextContents(), ['1', '0', '待接入']);
+    assert.match(await page.locator('.version-detail-pane').innerText(), /风险需求\s*2/);
+    assert.deepEqual(await page.locator('.version-kpis .metric-value').allTextContents(), ['1', '0', '2']);
     const stageAlignments = await page.locator('.version-requirements :is(th, td):nth-child(3), .version-requirements :is(th, td):nth-child(4)').evaluateAll(elements => elements.map(element => getComputedStyle(element).textAlign));
     assert.deepEqual(stageAlignments, ['left', 'left', 'left', 'left', 'left', 'left']);
     assert.match(await page.locator('.version-requirements').innerText(), /0 \/ 2 · 未完成/);

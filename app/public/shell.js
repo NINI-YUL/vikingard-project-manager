@@ -354,6 +354,38 @@ export function scopeActionContexts(contexts, versionId, functions = [], dataTab
   }));
 }
 
+export function actionRiskSummary(facts) {
+  const groups=new Map(),owners=new Map();
+  const ownerKey=item=>item.executorPersonId||item.version.id+'/'+(item.executorSourceId||item.sourceTaskId);
+  const riskItems=facts.filter(item=>['high','watch'].includes(item.risk?.level));
+  for(const item of facts){
+    const key=item.version.id+'/'+item.parentSourceTaskId;
+    if(!groups.has(key))groups.set(key,{version:item.version,sourceTaskId:item.parentSourceTaskId,title:item.requirementTitle,items:[],level:'unknown'});
+    groups.get(key).items.push(item);
+  }
+  for(const group of groups.values())group.level=group.items.some(i=>i.risk?.level==='high')?'high':group.items.some(i=>i.risk?.level==='watch')?'watch':group.items.some(i=>!i.risk||i.risk.level==='unknown')?'unknown':'normal';
+  for(const item of riskItems){
+    const key=ownerKey(item);
+    if(!owners.has(key))owners.set(key,{name:item.executorName||'执行者身份待核对',items:[],all:[]});
+    owners.get(key).items.push(item);
+  }
+  for(const item of facts)owners.get(ownerKey(item))?.all.push(item);
+  return {groups:[...groups.values()],owners:[...owners.values()],riskItems,unknown:facts.filter(i=>!i.risk||i.risk.level==='unknown').length};
+}
+
+function riskPill(risk) {
+  const styles={high:['red','高风险'],watch:['amber','需关注'],normal:['green','正常'],unknown:['','未知']};
+  const [tone,label]=styles[risk?.level]||styles.unknown;
+  return node('span','pill '+tone,label);
+}
+
+function feedbackSummary(item) {
+  const risk=item.risk,feedback=risk?.feedback;
+  if(!feedback)return risk?.reason||'尚无有效反馈';
+  const plan=risk.plannedProgressPercent;
+  return '反馈 '+feedback.progressPercent+'% · 提交 '+formatDate(feedback.submittedAt)+(plan==null?' · 计划进度不可计算':' · 提交时计划 '+Number(plan.toFixed(1))+'% · 落后 '+Number(risk.lagPercentagePoints.toFixed(1))+' 个百分点');
+}
+
 export function syncTargetVersions(versions, selectedVersionId = '') {
   return selectedVersionId ? versions.filter(version => version.id === selectedVersionId) : versions;
 }
@@ -672,13 +704,14 @@ async function renderAction(current, view) {
 
   const failed = contexts.filter(context => context.error).length;
   const facts = contexts.flatMap(context => (context.management?.items ?? []).map(item => ({ ...item, version: context.version })));
+  const riskSummary = actionRiskSummary(facts);
   const overdue = facts.filter(item => item.due?.overdue);
   const dueSoon = facts.filter(item => item.due?.dueSoon);
   const scope = node('div', 'scope');
   scope.append(node('span', null, '当前范围：' + contexts.length + ' 个活跃版本'));
   const guide = node('details', 'scope-guide');
   guide.append(node('summary', null, '统计口径与说明'), node('p', null,
-    '仅统计核心需求下的核心专业子单。三日内按公司工作日历计算；缺少计划时间或状态映射的工单无法判断到期。职能筛选不影响数据待处理。风险反馈尚未接入，不把缺失数据填成正常。'));
+    '仅统计核心需求下的核心专业子单。三日内按公司工作日历计算；缺少计划时间或状态映射的工单无法判断到期。职能筛选不影响数据待处理。有效反馈“存在风险”为高风险；反馈比提交时的计划进度落后至少20个百分点为需关注。不把缺失数据填成正常，不按采集节点自动判断未反馈。'));
   scope.append(node('span', 'note', '仅统计核心需求下的核心专业子单'), guide);
   wrap.append(scope);
   if (failed) wrap.append(errorCard(failed + ' 个版本读取失败。以下仅列出读取成功的工单，总数未知。', () => route()));
@@ -687,9 +720,9 @@ async function renderAction(current, view) {
 
   const metrics = node('div', 'metrics');
   metrics.append(
-    metricCard('高风险需求', '待接入', '风险等级尚未接入', 'red'),
-    metricCard('需关注需求', '待接入', '风险等级尚未接入', 'amber'),
-    metricCard('风险工单', '待接入', '反馈风险尚未接入', 'blue'),
+    metricCard('高风险需求', failed ? '未知' : riskSummary.groups.filter(g=>g.level==='high').length, '按需求内最高已知风险统计'+(riskSummary.unknown?'；另有 '+riskSummary.unknown+' 张工单风险未知':''), 'red'),
+    metricCard('需关注需求', failed ? '未知' : riskSummary.groups.filter(g=>g.level==='watch').length, '不重复计入高风险需求；进度差额至少20个百分点', 'amber'),
+    metricCard('风险工单', failed ? '未知' : riskSummary.riskItems.length, '已知高风险与需关注核心专业子单'+(riskSummary.unknown?'；另有 '+riskSummary.unknown+' 张未知':''), 'blue'),
     metricCard('已逾期工单', failed || unknownDue ? '未知' : overdue.length, unknownDue ? '已知逾期 ' + overdue.length + ' 张；另 ' + unknownDue + ' 张到期未知' : '按已知计划与当前状态判断', 'red'),
     metricCard('三日内到期', failed || unknownDue ? '未知' : dueSoon.length, unknownDue ? '已知三日内到期 ' + dueSoon.length + ' 张；另 ' + unknownDue + ' 张到期未知' : '按公司工作日历计算', 'blue')
   );
@@ -707,7 +740,19 @@ async function renderAction(current, view) {
     return card;
   }
   const risk = section('风险关注');
-  risk.append(emptyCard('风险等级与反馈风险尚未接入，暂不能判断高风险或需关注需求。'));
+  if(riskSummary.unknown)risk.append(node('p','note',riskSummary.unknown+' 张核心专业子单风险未知，保留有效反馈与提交时间；暂不自动判断本轮未反馈。'));
+  for(const group of riskSummary.groups.filter(g=>['high','watch'].includes(g.level))){
+    const detail=node('details','action-risk '+(group.level==='high'?'high':''));detail.open=true;
+    const summary=node('summary');summary.append(riskPill(group),node('strong',null,group.title||'所属需求待核对'),node('span','cell-note',group.version.displayName));detail.append(summary);
+    const rows=group.items.filter(i=>['high','watch'].includes(i.risk?.level)).map(item=>{
+      const row=node('tr'),identity=node('td');identity.append(link(item.title,taskHash(item.version.id,0,item.sourceTaskId),'row-link'),riskPill(item.risk));
+      const progress=node('td');progress.append(node('div',null,feedbackSummary(item)));
+      const reason=node('td');reason.append(node('div',null,item.risk.reason),node('div','risk-feedback-note',item.risk.feedback?.note||''));
+      row.append(identity,node('td',null,item.executorName||'身份待核对'),node('td',null,item.rawStatus||'状态未知'),progress,node('td',null,formatDate(item.plannedDueAt)),reason);return row;
+    });
+    detail.append(buildTable('风险核心专业子单',['工单','执行者','状态','反馈进度 / 提交时计划','截止时间','风险原因 / 所需协助'],rows,''));risk.append(detail);
+  }
+  if(!riskSummary.riskItems.length)risk.append(emptyCard(failed?'风险信息读取不完整，不能判断为零。':riskSummary.unknown?'已知范围暂无风险工单，其余工单风险未知。':'当前范围暂无已知高风险或需关注工单。'));
   main.append(risk);
 
   const overdueCard = section('已逾期工单', failed ? '总数未知' : overdue.length + ' 张工单');
@@ -750,7 +795,13 @@ async function renderAction(current, view) {
   if (!dueSoon.length) timeline.append(emptyCard(failed ? '到期信息读取不完整。' : unknownDue ? '可判断的工单中暂无三日内到期，其余工单到期未知。' : '当前范围暂无三日内到期核心专业子单。'));
   dueCard.append(timeline);
   const executors = section('风险工单执行人');
-  executors.append(emptyCard('风险工单尚未接入，执行人汇总待完成。'));
+  executors.append(node('p','note','按风险核心专业子单的实际执行者汇总，不排名、不评分。'));
+  for(const owner of riskSummary.owners){
+    const card=node('details','action-risk-owner'),head=node('summary');head.append(node('strong',null,owner.name));card.append(head);
+    const signals=node('div','action-owner-signals');for(const [label,count,tone] of [['风险',owner.items.length,'amber'],['逾期',owner.all.filter(i=>i.due?.overdue).length,'red'],['三日内',owner.all.filter(i=>i.due?.dueSoon).length,'blue']])signals.append(node('span','pill '+tone,count+' '+label));head.append(signals);
+    for(const item of owner.items)card.append(link(item.title,taskHash(item.version.id,0,item.sourceTaskId),'owner-task-link'));executors.append(card);
+  }
+  if(!riskSummary.owners.length)executors.append(emptyCard(failed?'执行人风险信息读取不完整。':'当前已知范围没有风险工单执行人。'));
   side.append(dueCard, executors);
   grid.append(main, side);
   wrap.append(grid);
@@ -843,7 +894,7 @@ async function renderVersionDetail(current, view) {
     metrics.append(
       metricCard('核心需求', progress.coreRequirementCount, '基础流程 ' + foundation.text + ' · ' + foundation.detail),
       metricCard('优化需求', progress.optimization.total, opt.text + ' · ' + opt.detail),
-      metricCard('风险需求', '待接入', '风险需求聚合将在 P09 后续阶段接入', 'muted')
+      metricCard('风险需求', management.requirements.filter(r=>['high','watch'].includes(r.risk?.level)).length, '按核心需求内最高已知风险汇总；未知 '+management.requirements.filter(r=>!r.risk||r.risk.level==='unknown'||r.risk.unknown>0).length+' 项', 'amber')
     );
     detailPane.append(metrics);
 
@@ -878,7 +929,8 @@ async function renderVersionDetail(current, view) {
       appendStageDetails(detailCell, requirement.stages.detail);
       row.append(detailCell);
       const riskCell = node('td');
-      riskCell.append(node('span', 'pill', '待接入'));
+      riskCell.append(riskPill(requirement.risk));
+      if(requirement.risk?.unknown)riskCell.append(node('div','cell-note',requirement.risk.unknown+' 张工单风险未知'));
       row.append(riskCell);
       return row;
     });
@@ -1154,6 +1206,7 @@ function renderTaskPanel(version, tasks, management, current, onClose = () => na
     };
     const dev = fact.timing?.development?.workingDays;
     const test = fact.timing?.test?.workingDays;
+    if(fact.risk){add('业务风险',({high:'高风险',watch:'需关注',normal:'正常',unknown:'未知'})[fact.risk.level]);add('反馈与计划对比',feedbackSummary(fact));add('风险说明',fact.risk.reason);if(fact.risk.feedback?.note)add('风险原因 / 所需协助',fact.risk.feedback.note);}
     add('计划工作日', fact.planWorkingDays === null || fact.planWorkingDays === undefined ? '未知' : fact.planWorkingDays + ' 日');
     const terminalDue = fact.semantic === 'delivered' ? '已完成，无需到期提醒' : fact.semantic === 'non_delivery' ? '已结束，无需到期提醒' : null;
     add('到期判断', terminalDue ?? (fact.due?.overdue ? '已逾期 ' + fact.due.workingDays + ' 个工作日' : fact.due?.dueSoon ? '3 个工作日内到期' : fact.due ? '未逾期' : '不可判断'));
@@ -1474,7 +1527,7 @@ async function renderRequirements(current, view) {
     overviewMain.append(node('div', 'requirement-meta', '需求负责人：' + (root?.executorName || '身份待核对') + ' · 版本：' + version.displayName + ' · 预计完成：' + formatDay(plannedEnd)));
     const tags = node('div', 'requirement-tags');
     const foundation = requirementStage(requirement.stages.foundation);
-    tags.append(node('span', 'pill blue', '核心需求'), node('span', 'pill', direct.length + ' 张直属工作单'), node('span', 'pill', '基础流程 ' + foundation.text), node('span', 'pill', '风险待接入'));
+    tags.append(node('span', 'pill blue', '核心需求'), node('span', 'pill', direct.length + ' 张直属工作单'), node('span', 'pill', '基础流程 ' + foundation.text), riskPill(requirement.risk));
     overviewMain.append(tags);
     const facts = node('div', 'requirement-overview-facts');
     const overviewFacts = [

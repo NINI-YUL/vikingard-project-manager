@@ -157,7 +157,7 @@ test('formal shell reads real versions, management facts, tasks and history', as
   assert.match(script, /登录已过期/);
   assert.match(script, /读取失败/);
   assert.match(script, /不把缺失数据填成正常/);
-  for (const label of ['活跃版本列表与版本详情', '核心需求进展与风险', '当前管理信号', '最近变化', '风险需求聚合将在 P09 后续阶段接入', '核心交付时间线与其他直属工作单', '工单时间线', '其他直属工作单']) {
+  for (const label of ['活跃版本列表与版本详情', '核心需求进展与风险', '当前管理信号', '最近变化', '按核心需求内最高已知风险汇总；未知 ', '核心交付时间线与其他直属工作单', '工单时间线', '其他直属工作单']) {
     assert.match(script, new RegExp(label));
   }
   const styles = await read('app/public/shell.css');
