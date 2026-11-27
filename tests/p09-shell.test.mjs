@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createApplication } from '../app/server.mjs';
-import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber, requirementCalendar, sortTimelineItems } from '../app/public/shell.js';
+import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber, requirementCalendar, sortTimelineItems, actualTimelineSpan, timelineActualText } from '../app/public/shell.js';
+
+import { timing } from '../app/management-engine.mjs';
 
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 
@@ -26,6 +28,70 @@ test('requirement timeline sorts configured due dates, then starts, with missing
   assert.deepEqual(sortTimelineItems(items).map(item => item.id), [
     'earlier-due', 'same-early-start', 'same-late-start', 'same-due-missing-start', 'missing-dates'
   ]);
+});
+
+test('actual timeline selects the stage and extends the latest open round through today without filling source times', () => {
+  const first = { start: '2026-11-19T10:00:00+08:00', end: '2026-11-20T18:00:00+08:00' };
+  const reopened = { start: '2026-11-25T10:00:00+08:00', end: null };
+  const item = { semantic: 'developing', typeName: '子需求', timing: { development: { unknown: false, workingDays: 4.5, rounds: [first, reopened] } } };
+  const before = structuredClone(item);
+  const span = actualTimelineSpan(item, '2026-11-27');
+  assert.equal(span.startKey, '2026-11-19');
+  assert.equal(span.endKey, '2026-11-27');
+  assert.equal(span.end, null);
+  assert.equal(span.ended, false);
+  assert.equal(span.completed, false);
+  assert.equal(timelineActualText(span), '实：11.19 -  · 已进行 4.5 工作日');
+  assert.deepEqual(item, before);
+
+  item.typeName = '测试任务';
+  item.semantic = 'delivered';
+  item.timing.test = { unknown: false, rounds: [{ start: '2026-11-26T16:30:00Z', end: '2026-11-27T17:00:00+08:00' }] };
+  const testSpan = actualTimelineSpan(item, '2026-11-27');
+  assert.equal(testSpan.startKey, '2026-11-27');
+  assert.equal(testSpan.endKey, '2026-11-27');
+  assert.equal(testSpan.completed, true);
+  assert.equal(timelineActualText(testSpan), '实：11.27 - 11.27 · 已完成');
+});
+
+test('actual timeline keeps missing, future and invalid actual times separate from not started', () => {
+  const make = (semantic, rounds, unknown = false) => ({ semantic, plannedStartAt: '2026-11-01', plannedDueAt: '2026-11-30', timing: { development: { rounds, unknown } } });
+  const span = item => actualTimelineSpan(item, '2026-11-27');
+  assert.equal(timelineActualText(span(make('not_started', [], true))), '实：未开始');
+  assert.equal(timelineActualText(span(make('developing', []))), '实：实际时间不可判断');
+  assert.equal(span(make('developing', [{ start: '2026-11-28', end: null }])).state, 'not_started');
+  for (const rounds of [
+    [{ start: null, end: '2026-11-20' }],
+    [{ start: 'invalid', end: null }],
+    [{ start: '2026-11-20', end: 'invalid' }],
+    [{ start: '2026-11-20', end: '2026-11-19' }],
+    [{ start: '2026-11-20', end: '2026-11-28' }],
+    [{ start: '2026-11-20', end: '2026-11-21' }, { start: null, end: '2026-11-24' }]
+  ]) assert.equal(span(make('developing', rounds)).state, 'unknown');
+  assert.equal(span(make('developing', [{ start: '2026-11-20', end: null }], true)).state, 'unknown');
+  const terminal = span(make('delivered', [{ start: '2026-11-20', end: null }]));
+  assert.equal(terminal.completed, false);
+  assert.equal(terminal.end, null);
+  assert.match(timelineActualText(terminal), /结束时间缺失/);
+});
+
+test('actual timeline reuses source-derived timer totals including pauses and completed rounds', () => {
+  const maps = {
+    dev: { semantic: 'developing', markers: ['development_start'] },
+    pause: { semantic: 'paused', markers: [] },
+    done: { semantic: 'delivered', markers: ['development_end'] }
+  };
+  const development = timing([
+    { at: '2026-11-23T09:00:00+08:00', statusId: 'dev' },
+    { at: '2026-11-23T12:00:00+08:00', statusId: 'pause' },
+    { at: '2026-11-24T09:00:00+08:00', statusId: 'dev' },
+    { at: '2026-11-24T12:00:00+08:00', statusId: 'done' }
+  ], maps, { syncStartAt: '2026-11-01', now: new Date('2026-11-27') }).development;
+  const result = actualTimelineSpan({ semantic: 'delivered', timing: { development } }, '2026-11-27');
+  assert.equal(result.startKey, '2026-11-23');
+  assert.equal(result.endKey, '2026-11-24');
+  assert.equal(result.workingDays, development.workingDays);
+  assert.equal(result.completed, true);
 });
 
 test('P09 shell routes keep stable version and task objects', () => {

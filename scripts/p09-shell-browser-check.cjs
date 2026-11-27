@@ -33,6 +33,10 @@ const facts = [
   fact('server-2', 'professional', '服务端', { overdue: false, workingDays: 5 })
 ];
 facts[0].issues = ['结构待核对'];
+facts[1].semantic = 'delivered';
+facts[1].rawStatus = '已完成';
+facts[1].timing.development = { unknown: false, workingDays: 3, rounds: [{ start: '2026-11-19T02:00:00Z', end: '2026-11-24T02:00:00Z', unknown: false }] };
+facts[2].timing.development = { unknown: false, workingDays: 2, rounds: [{ start: '2026-11-25T02:00:00Z', end: null, unknown: false }] };
 facts[0].key = '107541';
 facts[4].title = '第二个核心需求';
 facts[4].key = '107550';
@@ -90,6 +94,7 @@ const calendarFixture = {
     browser = await chromium.launch({ headless: true, channel: 'chrome' });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     page.setDefaultTimeout(10000);
+    await page.clock.setFixedTime(new Date('2026-11-27T02:00:00Z'));
     const errors = [], consoleErrors = [], expectedHttpFailures = new Map();
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') consoleErrors.push({ text: message.text(), url: message.location().url }); });
@@ -108,7 +113,21 @@ const calendarFixture = {
         rules: configRules, calendar: calendarFixture, mappings: [], projects: [{ id: 'project', name: '测试项目', statuses: [{ id: 'developing', name: '开发中', workflowId: 'flow', workflowName: '开发流程', usedCount: 1 }] }],
         versions: versions.map(version => ({ id: version.id, name: version.displayName, lifecycle: 'enrolled' })), requirements: []
       };
-      else if (url.pathname.startsWith('/api/management/versions/')) data = management(versionIds.indexOf(url.pathname.split('/').at(-1)));
+      else if (url.pathname.startsWith('/api/management/versions/')) {
+        data = management(versionIds.indexOf(url.pathname.split('/').at(-1)));
+        if (new URL(page.url()).searchParams.get('scenario') === 'actual-timeline') {
+          const build = (id, values) => ({ ...fact(id, 'professional', '客户端', null), plannedStartAt: '2026-11-20', plannedDueAt: '2026-11-22', ...values });
+          data.items = [facts[0],
+            build('single-day', { semantic: 'delivered', rawStatus: '已完成', timing: { development: { unknown: false, workingDays: 1, rounds: [{ start: '2026-11-23', end: '2026-11-23' }] } } }),
+            build('unplanned', { plannedStartAt: null, plannedDueAt: null, planWorkingDays: null, timing: { development: { unknown: false, workingDays: 2, rounds: [{ start: '2026-11-18', end: null }] } } }),
+            build('future-start', { timing: { development: { unknown: false, rounds: [{ start: '2026-12-15', end: null }] } } }),
+            build('pending', { semantic: 'not_started', rawStatus: '未开始', timing: { development: { unknown: true, rounds: [] } } }),
+            build('unknown-time', { timing: { development: { unknown: true, rounds: [{ start: '2026-11-19', end: null }] } } }),
+            build('reopened', { timing: { development: { unknown: false, workingDays: 4.5, rounds: [{ start: '2026-11-19', end: '2026-11-20' }, { start: '2026-11-26', end: null }] } } }),
+            build('testing', { typeName: '测试任务', semantic: 'testing', timing: { test: { unknown: false, workingDays: 1, rounds: [{ start: '2026-11-25', end: null }] } } })
+          ];
+        }
+      }
       else if (url.pathname.includes('/history')) data = { items: [], nextOffset: null };
       else if (url.pathname.includes('/tasks')) {
         const offset = Number(url.searchParams.get('offset') || 0);
@@ -291,7 +310,11 @@ const calendarFixture = {
     assert.equal(await page.locator('body').evaluate(element => element.classList.contains('requirement-page')), true);
     await page.evaluate(() => document.fonts.ready);
     assert.match(await page.locator('body').evaluate(element => getComputedStyle(element).fontFamily), /Plus Jakarta Sans/);
-    assert.equal(await page.locator('.requirement-day').count(), 7);
+    assert.equal(await page.locator('.requirement-day').count(), 9);
+    assert.equal(await page.locator('.requirement-actual-bar').count(), 2);
+    assert.equal(await page.locator('.requirement-actual-bar i').count(), 1);
+    assert.match(await page.locator('.requirement-timeline-label').first().innerText(), /估：.*实：/s);
+    assert.equal(await page.locator('.requirement-actual-bar').first().evaluate(element => getComputedStyle(element).height), '4px');
     assert.equal(await page.locator('.requirement-day.special').count(), 1);
     assert.equal(await page.locator('.requirement-day.rest').count(), 2);
     const calendarComparison = [];
@@ -326,6 +349,7 @@ const calendarFixture = {
           ['.requirement-overview-fact b', '.req-fact b', ['fontSize', 'lineHeight', 'fontWeight', 'color']],
           ['.requirement-timeline-card', '.gantt-v2', ['padding', 'borderRadius', 'borderColor', 'boxShadow']],
           ['.requirement-timeline-label', '.gantt-v2-label', ['padding', 'position', 'backgroundColor']],
+          ['.requirement-actual-bar.active', '.gantt-v2-actual.doing', ['height', 'top', 'borderRadius', 'backgroundColor']],
           ['.requirement-work-name', '.work-name', ['fontSize', 'lineHeight', 'fontWeight', 'color']],
           ['.requirement-work-card', '.work-card', ['padding', 'borderRadius', 'minHeight', 'borderColor', 'boxShadow']]
         ];
@@ -342,6 +366,85 @@ const calendarFixture = {
     for (const row of calendarComparison) assert.deepEqual(row.actual, row.expected, row.width + 'px ' + row.selector);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.screenshot({ path: path.join(output, 'p09-requirement-desktop.png'), fullPage: true });
+
+    const timelineTask = page.locator('.requirement-timeline-row').first();
+    await timelineTask.click();
+    const taskDrawer = page.getByRole('dialog', { name: '任务详情', exact: true });
+    await taskDrawer.waitFor();
+    assert.equal(await taskDrawer.locator('.panel-title').innerText(), 'ui');
+    await taskDrawer.getByRole('button', { name: '来源动态', exact: true }).click();
+    await taskDrawer.getByText('当前没有来源动态记录。', { exact: true }).waitFor();
+    await taskDrawer.getByRole('button', { name: '关闭', exact: true }).click();
+    assert.equal(await timelineTask.evaluate(element => document.activeElement === element), true);
+    for (const key of ['Enter', 'Space']) {
+      await timelineTask.press(key);
+      await taskDrawer.waitFor();
+      await page.keyboard.press('Escape');
+      await taskDrawer.waitFor({ state: 'detached' });
+      assert.equal(await timelineTask.evaluate(element => document.activeElement === element), true);
+    }
+
+    await page.goto(origin + '/?scenario=actual-timeline#/requirements?version=' + versionIds[0] + '&requirement=root');
+    await page.locator('.requirement-timeline-row').first().waitFor();
+    assert.equal(await page.locator('.requirement-day').count(), 10, 'Actual time extends the shared calendar, future actual starts do not');
+    assert.equal(await page.locator('.requirement-actual-bar').count(), 4);
+    assert.equal(await page.locator('.requirement-actual-bar i').count(), 1);
+    const expected = {
+      'single-day': ['2026-11-23', '2026-11-23'], unplanned: ['2026-11-18', '2026-11-27'],
+      reopened: ['2026-11-19', '2026-11-27'], testing: ['2026-11-25', '2026-11-27']
+    };
+    for (const width of [375, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      const result = await page.locator('.requirement-timeline').evaluate((element, expected) => {
+        const days = [...element.querySelectorAll('.requirement-day')];
+        return [...element.querySelectorAll('.requirement-timeline-row')].map(row => {
+          const title = row.querySelector('b').textContent, actual = row.querySelector('.requirement-actual-bar'), plan = row.querySelector('.requirement-bar');
+          const dates = expected[title];
+          const rect = actual?.getBoundingClientRect(), track = row.querySelector('.requirement-track').getBoundingClientRect();
+          const startIndex = dates ? Math.round((Date.parse(dates[0]) - Date.parse('2026-11-18')) / 86400000) : -1;
+          const endIndex = dates ? Math.round((Date.parse(dates[1]) - Date.parse('2026-11-18')) / 86400000) : -1;
+          const expectedLeft = startIndex >= 0 ? days[startIndex].getBoundingClientRect().left : null;
+          const expectedRight = endIndex >= 0 ? days[endIndex].getBoundingClientRect().right : null;
+          return { title, label: row.querySelector('.requirement-timeline-label').textContent, actual: !!actual, plan: !!plan,
+            leftDelta: rect ? Math.abs(rect.left - expectedLeft) : null, rightDelta: rect ? Math.abs(rect.right - expectedRight) : null,
+            height: rect?.height, top: rect ? rect.top - track.top : null, minHeight: row.getBoundingClientRect().height,
+            planLeft: plan ? Math.abs(plan.getBoundingClientRect().left - days[2].getBoundingClientRect().left) : null,
+            planRight: plan ? Math.abs(plan.getBoundingClientRect().right - days[4].getBoundingClientRect().right) : null,
+            tone: actual ? getComputedStyle(actual).backgroundColor : null,
+            pendingColor: getComputedStyle(row.querySelector('.gantt-actual-label')).color };
+        });
+      }, expected);
+      for (const row of result) {
+        if (expected[row.title]) {
+          assert.equal(row.actual, true, row.title);
+          assert.ok(row.leftDelta < 1 && row.rightDelta < 1, width + 'px strict date alignment: ' + JSON.stringify(row));
+          assert.equal(row.height, 4);
+          assert.equal(row.top, 51);
+          assert.ok(row.minHeight >= 76);
+        } else assert.equal(row.actual, false, row.title + ' must not invent actual times');
+        if (row.plan) assert.ok(row.planLeft < 1 && row.planRight < 1, 'Planned date endpoints must stay fixed: ' + row.title);
+      }
+      const byTitle = Object.fromEntries(result.map(row => [row.title, row]));
+      assert.equal(byTitle.unplanned.plan, false);
+      assert.match(byTitle.unplanned.label, /估：未配置/);
+      assert.match(byTitle.reopened.label, /已进行 4.5 工作日/);
+      assert.match(byTitle.testing.label, /实：11.25 - /);
+      assert.match(byTitle.pending.label, /实：未开始/);
+      assert.equal(byTitle.pending.pendingColor, 'rgb(152, 162, 179)');
+      assert.match(byTitle['unknown-time'].label, /实：实际时间不可判断/);
+      assert.equal(byTitle['single-day'].tone, 'rgb(112, 169, 141)');
+      assert.equal(byTitle.reopened.tone, 'rgb(109, 136, 194)');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.screenshot({ path: path.join(output, 'p09-actual-timeline-' + width + '.png'), fullPage: true });
+      await page.locator('.requirement-timeline-row').first().click();
+      const drawer = page.getByRole('dialog', { name: '任务详情', exact: true });
+      await drawer.waitFor();
+      const bounds = await drawer.evaluate(element => { const r = element.getBoundingClientRect(); return { left: r.left, right: r.right, overflow: element.scrollWidth > element.clientWidth }; });
+      assert.ok(bounds.left >= 0 && bounds.right <= width && !bounds.overflow, width + 'px task drawer');
+      await page.screenshot({ path: path.join(output, 'p09-actual-task-drawer-' + width + '.png') });
+      await page.keyboard.press('Escape');
+      await drawer.waitFor({ state: 'detached' });
+    }
 
     await page.goto(origin + '/#/action');
     await page.locator('.action-grid').waitFor();
@@ -727,7 +830,7 @@ const calendarFixture = {
       const expectedStatus = expectedHttpFailures.get(message.url);
       assert.ok(expectedStatus && message.text.startsWith('Failed to load resource:') && message.text.includes('status of ' + expectedStatus), JSON.stringify(message));
     }
-    console.log('PASS P09 browser: desktop/mobile version and requirement workspaces, function scopes, data tab, pagination, task deep link, delayed navigation, failures, expired session, viewer restrictions, owner config preview/save and audit.');
+    console.log('PASS P09 browser: desktop/mobile version and requirement workspaces, actual timeline date alignment and task drawers, function scopes, data tab, pagination, task deep link, delayed navigation, failures, expired session, viewer restrictions, owner config preview/save and audit.');
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

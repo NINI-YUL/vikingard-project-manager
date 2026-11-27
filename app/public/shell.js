@@ -117,6 +117,61 @@ function dayValue(value) {
   return Number.isNaN(date.getTime()) ? null : date.getTime();
 }
 
+function dayKey(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+function timelineShortDay(value) {
+  const key = dayKey(value);
+  return key ? key.slice(5).replace('-', '.') : value ? '日期未知' : '未配置';
+}
+
+function timelineTone(item) {
+  if (item.due?.overdue) return 'risk';
+  if (['delivered', 'non_delivery'].includes(item.semantic)) return 'done';
+  if (item.semantic === 'not_started') return 'pending';
+  return item.semantic ? 'active' : 'unknown';
+}
+
+export function actualTimelineSpan(item, todayKey = dayKey(new Date())) {
+  const timing = item.typeName?.includes('测试') ? item.timing?.test : item.timing?.development;
+  const rounds = Array.isArray(timing?.rounds) ? timing.rounds : [];
+  if (!rounds.length) return { state: item.semantic === 'not_started' ? 'not_started' : 'unknown' };
+  if (timing.unknown || !todayKey) return { state: 'unknown' };
+  for (const round of rounds) {
+    const start = dayKey(round?.start), end = dayKey(round?.end);
+    if (!start || round.unknown || (round.end != null && (!end || end < start || end > todayKey))) return { state: 'unknown' };
+  }
+  const start = rounds[0].start, startKey = dayKey(start);
+  if (startKey > todayKey) return { state: 'not_started' };
+  if (rounds.some(round => dayKey(round.start) > todayKey)) return { state: 'unknown' };
+  const end = rounds.at(-1).end ?? null, endKey = end ? dayKey(end) : todayKey;
+  if (endKey < startKey) return { state: 'unknown' };
+  const ended = end !== null;
+  const terminal = ['delivered', 'non_delivery'].includes(item.semantic);
+  return {
+    state: ended ? 'done' : 'doing', start, startKey, end, endKey, ended,
+    completed: ended && terminal, terminal, workingDays: timing.workingDays ?? null
+  };
+}
+
+function timelineEstimateText(item) {
+  const start = timelineShortDay(item.plannedStartAt), end = timelineShortDay(item.plannedDueAt);
+  if (start === '未配置' && end === '未配置') return '估：未配置';
+  return '估：' + start + ' - ' + end + (item.planWorkingDays === null || item.planWorkingDays === undefined ? '' : ' · ' + item.planWorkingDays + '个工作日');
+}
+
+export function timelineActualText(actual) {
+  if (actual.state === 'not_started') return '实：未开始';
+  if (actual.state === 'unknown') return '实：实际时间不可判断';
+  const end = actual.ended ? timelineShortDay(actual.end) : '';
+  const suffix = actual.completed ? '已完成' : actual.ended ? '已结束' : actual.terminal ? '结束时间缺失' : actual.workingDays === null || actual.workingDays === undefined ? '进行中 · 历时未知' : '已进行 ' + actual.workingDays + ' 工作日';
+  return '实：' + timelineShortDay(actual.start) + ' - ' + end + ' · ' + suffix;
+}
+
 export function sortTimelineItems(items) {
   return items.map((item, index) => ({ item, index })).sort((a, b) => {
     const dueA = dayValue(a.item.plannedDueAt), dueB = dayValue(b.item.plannedDueAt);
@@ -1040,10 +1095,10 @@ function factFromManagement(management, taskId) {
   return management?.items?.find(item => item.sourceTaskId === taskId) ?? null;
 }
 
-function renderTaskPanel(version, tasks, management, current) {
+function renderTaskPanel(version, tasks, management, current, onClose = () => navigate(taskHash(version.id, current.offset, null))) {
   const panel = node('aside', 'task-panel');
   panel.setAttribute('aria-label', '任务详情');
-  const close = button('关闭', () => navigate(taskHash(version.id, current.offset, null)), 'button small');
+  const close = button('关闭', onClose, 'button small');
   const task = tasks.items.find(item => item.sourceTaskId === current.taskId);
   const fact = factFromManagement(management, current.taskId);
   if (!task && !fact) {
@@ -1235,6 +1290,13 @@ async function renderRequirements(current, view) {
     const plannedEnds = direct.map(item => dayValue(item.plannedDueAt)).filter(value => value !== null);
     const plannedStart = plannedStarts.length ? Math.min(...plannedStarts) : null;
     const plannedEnd = plannedEnds.length ? Math.max(...plannedEnds) : null;
+    const todayKey = dayKey(new Date());
+    const actualSpans = new Map(timelineItems.map(item => [item.id, actualTimelineSpan(item, todayKey)]));
+    const visibleActualSpans = [...actualSpans.values()].filter(span => span.state === 'doing' || span.state === 'done');
+    const timelineStarts = [...plannedStarts, ...visibleActualSpans.map(span => dayValue(span.start))];
+    const timelineEnds = [...plannedEnds, ...visibleActualSpans.map(span => dayValue(span.endKey))];
+    const timelineStart = timelineStarts.length ? Math.min(...timelineStarts) : null;
+    const timelineEnd = timelineEnds.length ? Math.max(...timelineEnds) : null;
     const terminalCount = direct.filter(item => ['delivered', 'non_delivery'].includes(item.semantic)).length;
     const issueCount = direct.filter(item => item.issues?.length).length;
     const currentStage = !requirement.stages.foundation?.complete ? '基础流程'
@@ -1281,10 +1343,10 @@ async function renderRequirements(current, view) {
       timeline.tabIndex = 0;
       timeline.setAttribute('role', 'region');
       timeline.setAttribute('aria-label', '按日工单时间线，可横向滚动；左侧工单信息固定');
-      const days = requirementCalendar(plannedStart, plannedEnd, management.calendar);
+      const days = requirementCalendar(timelineStart, timelineEnd, management.calendar);
       timelineInner.style.setProperty('--day-count', String(Math.max(1, days.length)));
       const axis = node('div', 'requirement-timeline-axis');
-      axis.append(node('div', 'requirement-axis-corner', '职能 / 工单 / 起止时间'));
+      axis.append(node('div', 'requirement-axis-corner', '工单 / 预估 / 实际'));
       const axisTrack = node('div', 'requirement-axis-track');
       if (days.length) {
         const weeks = node('div', 'requirement-weeks'), dates = node('div', 'requirement-dates');
@@ -1311,12 +1373,30 @@ async function renderRequirements(current, view) {
       const todayIndex = days.findIndex(day => day.key === today);
       for (const item of timelineItems) {
         const row = node('div', 'requirement-timeline-row');
+        row.tabIndex = 0;
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', '查看任务详情：' + item.title);
+        const openTask = () => {
+          const dialog = node('dialog', 'requirement-task-dialog');
+          dialog.setAttribute('aria-label', '任务详情');
+          dialog.append(renderTaskPanel(version, { items: [] }, management, { ...current, taskId: item.sourceTaskId }, () => dialog.close()));
+          dialog.addEventListener('close', () => { dialog.remove(); row.focus(); }, { once: true });
+          wrap.append(dialog);
+          dialog.showModal();
+        };
+        row.addEventListener('click', openTask);
+        row.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTask(); }
+        });
+        const actual = actualSpans.get(item.id) ?? { state: 'unknown' };
         const label = node('div', 'requirement-timeline-label');
-        label.append(node('b', null, (item.functionName || item.typeName || '职能待核对') + ' · ' + item.title), node('span', null, formatDay(item.plannedStartAt) + ' → ' + formatDay(item.plannedDueAt) + (item.planWorkingDays === null || item.planWorkingDays === undefined ? '' : ' · ' + item.planWorkingDays + ' 个工作日')));
+        label.append(node('b', null, item.title || '未命名工单'), node('span', 'gantt-estimate-label', timelineEstimateText(item)), node('span', 'gantt-actual-label ' + (actual.state === 'not_started' ? 'is-pending' : actual.state === 'unknown' ? 'is-unknown' : 'is-active'), timelineActualText(actual)));
         const track = node('div', 'requirement-track');
         const itemDays = requirementCalendar(item.plannedStartAt, item.plannedDueAt);
         const startIndex = days.findIndex(day => day.key === itemDays[0]?.key);
         const endIndex = days.findIndex(day => day.key === itemDays.at(-1)?.key);
+        const actualStartIndex = actual.startKey ? days.findIndex(day => day.key === actual.startKey) : -1;
+        const actualEndIndex = actual.endKey ? days.findIndex(day => day.key === actual.endKey) : -1;
         for (const day of days) track.append(node('span', 'requirement-day-cell' + (!day.working ? ' rest' : day.special ? ' special' : '')));
         if (todayIndex >= 0) {
           const marker = node('span', 'requirement-today');
@@ -1324,14 +1404,25 @@ async function renderRequirements(current, view) {
           marker.title = '今天（北京时间）：' + today;
           track.append(marker);
         }
+        const tone = timelineTone(item);
         if (startIndex >= 0 && endIndex >= startIndex) {
-          const bar = node('div', 'requirement-bar ' + (item.due?.overdue ? 'risk' : ['delivered', 'non_delivery'].includes(item.semantic) ? 'done' : item.semantic === 'not_started' ? 'pending' : item.semantic ? 'active' : 'unknown'), item.rawStatus || '状态未知');
+          const bar = node('div', 'requirement-bar ' + tone, item.rawStatus || '状态未知');
           bar.style.left = (startIndex / days.length * 100) + '%';
           bar.style.width = ((endIndex - startIndex + 1) / days.length * 100) + '%';
-          bar.title = item.title + ' · ' + item.rawStatus + ' · ' + formatDay(item.plannedStartAt) + ' → ' + formatDay(item.plannedDueAt);
+          bar.title = item.title + ' · ' + item.rawStatus + ' · ' + timelineEstimateText(item);
           track.append(bar);
         } else {
-          track.append(node('div', 'requirement-unplanned', '周期未配置，不绘制时间条'));
+          track.append(node('div', 'requirement-unplanned', '周期未配置，不绘制预估时间条'));
+        }
+        if (actual.state === 'doing' || actual.state === 'done') {
+          if (actualStartIndex >= 0 && actualEndIndex >= actualStartIndex) {
+            const actualBar = node('div', 'requirement-actual-bar ' + tone);
+            actualBar.style.left = (actualStartIndex / days.length * 100) + '%';
+            actualBar.style.width = ((actualEndIndex - actualStartIndex + 1) / days.length * 100) + '%';
+            actualBar.title = item.title + ' · ' + timelineActualText(actual);
+            if (actual.completed) actualBar.append(node('i', null));
+            track.append(actualBar);
+          }
         }
         row.append(label, track);
         timelineInner.append(row);
@@ -1341,7 +1432,7 @@ async function renderRequirements(current, view) {
       for (const [tone, text] of [['done', '终态'], ['active', '进行中 / 处理中'], ['pending', '未开始'], ['risk', '已逾期'], ['rest', '休息日（不计工作日）'], ['special', '特殊工作日（计工作日）']]) {
         const entry = node('span'); entry.append(node('i', 'requirement-legend-dot ' + tone), node('span', null, text)); legend.append(entry);
       }
-      legend.append(node('span', null, '灰线：今天（北京时间）；日期缺失或范围异常不绘制时间条'));
+      legend.append(node('span', null, '实线：实际执行起止（包含暂停间隔）；历时按有效计时累计；圆点：有实际结束且已进入终态；灰线：今天（北京时间）'));
       timelineCard.append(timeline, legend);
     }
     timelineSection.append(timelineCard);

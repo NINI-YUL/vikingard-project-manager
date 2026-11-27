@@ -553,15 +553,32 @@ body.v2-page {
 .requirement-day.rest, .requirement-day-cell.rest { background: #f7f9fc; }
 .requirement-day.special, .requirement-day-cell.special { background: #f0f6f1; }
 .requirement-day-cell { border-right: 1px dashed #e8edf4; }
-.requirement-page .requirement-timeline-label { position: sticky; left: 0; z-index: 2; padding: 9px 12px; background: white; border-color: #e3e9f2; font-size: 12px; color: #344054; }
+.requirement-page .requirement-timeline-label { position: sticky; left: 0; z-index: 2; padding: 7px 12px; background: white; border-color: #e3e9f2; font-size: 12px; color: #344054; }
+.requirement-page .requirement-timeline-row { min-height: 76px; cursor: pointer; }
+.requirement-page .requirement-timeline-row:hover .requirement-timeline-label,
+.requirement-page .requirement-timeline-row:focus-visible .requirement-timeline-label { background: #f5f8fe; }
+.requirement-page .requirement-timeline-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.requirement-task-dialog { position: fixed; inset: 0 0 0 auto; width: min(520px, 96vw); max-width: 96vw; height: 100dvh; max-height: 100dvh; margin: 0; padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); }
+.requirement-task-dialog::backdrop { background: rgb(20 31 54 / 25%); }
+.requirement-task-dialog .task-panel { position: static; height: 100%; max-height: none; margin: 0; border: 0; border-radius: 0; }
 .requirement-page .requirement-timeline-label b { font-size: 12px; line-height: 18px; font-weight: 500; }
 .requirement-page .requirement-timeline-label span { margin-top: 4px; line-height: 18px; color: #737e91; }
+.requirement-page .requirement-timeline-label .gantt-actual-label { color: #687185; }
+.requirement-page .requirement-timeline-label .gantt-actual-label.is-pending,
+.requirement-page .requirement-timeline-label .gantt-actual-label.is-unknown { color: #98a2b3; }
 .requirement-page .requirement-track { background-image: none; }
 .requirement-today { position: absolute; top: 0; bottom: 0; width: 1px; z-index: 1; background: #8b96aa; pointer-events: none; }
 .requirement-page .requirement-bar { display: flex; align-items: center; z-index: 1; top: 13px; height: 30px; min-width: 0; max-width: none; padding: 0 9px; border-radius: 5px; font-size: 11px; font-weight: 500; line-height: 18px; color: #405caa; background: #edf2fe; border-color: #aabce6; }
 .requirement-page .requirement-bar.done { color: #34725c; background: #eaf6f0; border-color: #a1c7b4; }
 .requirement-page .requirement-bar.pending, .requirement-page .requirement-bar.unknown { color: #687185; background: #f2f4f7; border-color: #cbd3df; }
 .requirement-page .requirement-bar.risk { color: #a93e58; border-color: #d49aac; background: repeating-linear-gradient(45deg,#fceff3 0 7px,#f7e3eb 7px 12px); }
+.requirement-page .requirement-actual-bar { position: absolute; top: 51px; z-index: 2; height: 4px; min-width: 2px; border-radius: 3px; }
+.requirement-page .requirement-actual-bar.active { background: #6d88c2; }
+.requirement-page .requirement-actual-bar.done { background: #70a98d; }
+.requirement-page .requirement-actual-bar.pending,
+.requirement-page .requirement-actual-bar.unknown { background: #98a2b3; }
+.requirement-page .requirement-actual-bar.risk { background: #c06c83; }
+.requirement-page .requirement-actual-bar i { position: absolute; top: -2px; right: 0; width: 8px; height: 8px; box-sizing: border-box; border: 2px solid #fff; border-radius: 50%; background: inherit; }
 .requirement-page .requirement-unplanned { position: absolute; inset: 0; background: #fafbfd; }
 .requirement-range-note { display: block; padding: 12px; }
 .requirement-page .requirement-timeline-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; line-height: 20px; color: #687185; font-size: 10px; }
@@ -591,7 +608,8 @@ body.v2-page {
  .requirement-page .requirement-meta { font-size: 11px; }
  .requirement-page .requirement-timeline-card { padding: 12px; }
  .requirement-page .requirement-timeline-axis, .requirement-page .requirement-timeline-row { grid-template-columns: 210px minmax(0,1fr); }
- .requirement-page .requirement-timeline-label { padding: 9px 10px; }
+ .requirement-page .requirement-timeline-label { padding: 7px 10px; }
+ .requirement-page .requirement-timeline-row { min-height: 82px; }
  .requirement-page .requirement-other-grid { grid-template-columns: minmax(0,1fr); gap: 10px; }
  .requirement-page .requirement-work-card { min-height: 0; padding: 14px; }
 }
