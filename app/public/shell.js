@@ -790,11 +790,17 @@ async function renderAction(current, view) {
     card.append(head);
     return card;
   }
-  const risk = section('风险关注');
+  const risk = section('风险关注');risk.classList.add('action-risk-section');
+  const riskGroups=riskSummary.groups.filter(g=>['high','watch'].includes(g.level));
+  const riskHead=risk.firstElementChild,copy=node('div','risk-head-copy');
+  copy.append(node('h2','section-title','风险关注'),node('div','note','按高风险、需关注、正常形成视觉层级；当前只展开存在风险核心专业子单的需求'));
+  const legend=node('div','risk-legend');legend.append(node('span','pill red','高风险'),node('span','pill amber','需关注'),node('span','pill green','正常'));copy.append(legend);
+  riskHead.replaceChildren(copy,node('span','pill red risk-section-count',failed?'总数未知':riskGroups.length+' 个需求 · '+riskSummary.riskItems.length+' 张工单'));
   if(riskSummary.unknown)risk.append(node('p','note',riskSummary.unknown+' 张核心专业子单风险未知，保留有效反馈与提交时间；暂不自动判断本轮未反馈。'));
-  for(const group of riskSummary.groups.filter(g=>['high','watch'].includes(g.level))){
+  for(const group of riskGroups){
     const detail=node('details','action-risk '+(group.level==='high'?'high':''));detail.open=true;
-    const summary=node('summary');summary.append(riskPill(group),node('strong',null,group.title||'所属需求待核对'),node('span','cell-note',group.version.displayName));detail.append(summary);
+    const summary=node('summary'),title=node('div','risk-group-title');title.append(riskPill(group),node('strong',null,group.title||'所属需求待核对'));
+    summary.append(title,node('div','risk-meta',group.version.displayName));detail.append(summary);
     const rows=group.items.filter(i=>['high','watch'].includes(i.risk?.level)).map(item=>{
       const row=node('tr'),identity=node('td');identity.append(link(item.title,taskHash(item.version.id,0,item.sourceTaskId),'row-link'),riskPill(item.risk));
       const progress=node('td');progress.append(node('div',null,feedbackSummary(item)));
@@ -845,11 +851,13 @@ async function renderAction(current, view) {
   }
   if (!dueSoon.length) timeline.append(emptyCard(failed ? '到期信息读取不完整。' : unknownDue ? '可判断的工单中暂无三日内到期，其余工单到期未知。' : '当前范围暂无三日内到期核心专业子单。'));
   dueCard.append(timeline);
-  const executors = section('风险工单执行人');
+  const executors = section('风险工单执行人');executors.classList.add('action-risk-section');
   executors.append(node('p','note','按风险核心专业子单的实际执行者汇总，不排名、不评分。'));
   for(const owner of riskSummary.owners){
-    const card=node('details','action-risk-owner'),head=node('summary');head.append(node('strong',null,owner.name));card.append(head);
+    const card=node('details','action-risk-owner'),head=node('summary');
+    const name=node('div','owner-name');name.append(node('span','avatar',Array.from(owner.name)[0]||'?'),node('strong',null,owner.name));head.append(name);
     const signals=node('div','action-owner-signals');for(const [label,count,tone] of [['风险',owner.items.length,'amber'],['逾期',owner.all.filter(i=>i.due?.overdue).length,'red'],['三日内',owner.all.filter(i=>i.due?.dueSoon).length,'blue']])signals.append(node('span','pill '+tone,count+' '+label));head.append(signals);
+    card.append(head);
     for(const item of owner.items)card.append(link(item.title,taskHash(item.version.id,0,item.sourceTaskId),'owner-task-link'));executors.append(card);
   }
   if(!riskSummary.owners.length)executors.append(emptyCard(failed?'执行人风险信息读取不完整。':'当前已知范围没有风险工单执行人。'));

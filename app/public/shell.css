@@ -982,16 +982,36 @@ body.v2-page {
 .actual-time-preview-round h4 { margin:0 0 8px; font-size:13px; }
 .actual-time-actions > .note { margin-right:auto; }
 
-/* Action risk groups follow the V2 compact neutral cards. */
+/* Action risk groups follow the V2 compact neutral cards; scoped so overdue/due cards keep their own styles. */
+.action-section.action-risk-section { padding:15px; border-color:#dfe5ef; border-radius:8px; box-shadow:none; }
+.risk-head-copy .note { margin-top:5px; font-size:12px; }
+.risk-legend { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+.risk-legend .pill { padding:3px 7px; font-size:10px; }
+.risk-section-count { flex:none; }
 .action-risk { min-width:0; margin-top:9px; padding:12px; border:1px solid #e5eaf2; border-left:4px solid #a9610d; border-radius:6px; background:#fff; }
 .action-risk.high { border-left-color:#b93643; background:#fff9fa; }
-.action-risk > summary { display:flex; flex-wrap:wrap; align-items:center; gap:8px; cursor:pointer; }
-.action-risk > summary strong { font-size:14px; }
-.action-risk > .table-wrap { margin-top:12px; }
+.action-risk:hover { box-shadow:0 3px 12px #1e284417; }
+.action-risk > summary { display:block; cursor:pointer; }
+.action-risk > summary:focus-visible { outline:2px solid var(--primary); outline-offset:2px; border-radius:4px; }
+.risk-group-title { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.risk-group-title strong { font-size:16px; line-height:1.45; }
+.risk-meta { margin-top:5px; color:var(--ink-3); font-size:12px; line-height:1.5; }
+.action-risk > .table-wrap { margin-top:12px; overflow-x:auto; }
+.action-risk table { min-width:680px; table-layout:fixed; }
+.action-risk th:nth-child(1) { width:19%; }
+.action-risk th:nth-child(2) { width:11%; }
+.action-risk th:nth-child(3) { width:11%; }
+.action-risk th:nth-child(4) { width:10%; }
+.action-risk th:nth-child(5) { width:12%; }
+.action-risk th:nth-child(6) { width:37%; }
 .action-risk td { vertical-align:top; }
 .action-risk .pill + .pill { margin-left:5px; }
 .risk-feedback-note { white-space:pre-line; overflow-wrap:anywhere; color:var(--ink-3); font-size:11px; }
 .action-risk-owner { margin-top:8px; padding:10px; border:1px solid #e7ebf2; border-radius:6px; }
 .action-risk-owner > summary { cursor:pointer; }
-.action-owner-signals { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+.action-risk-owner .owner-name { display:flex; align-items:center; margin-bottom:9px; }
+.action-risk-owner .owner-name strong { overflow-wrap:anywhere; }
+.action-risk-owner .avatar { display:inline-grid; width:30px; height:30px; flex:none; margin-right:8px; place-items:center; color:#294aae; background:#e9edff; border-radius:50%; font-weight:700; }
+.action-owner-signals { display:flex; flex-wrap:wrap; gap:5px; }
+.action-owner-signals .pill { padding:3px 6px; font-size:10px; }
 .owner-task-link { display:block; margin-top:8px; font-size:12px; overflow-wrap:anywhere; }

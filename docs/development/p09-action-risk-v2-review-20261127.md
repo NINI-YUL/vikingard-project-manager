@@ -1,6 +1,6 @@
 # P09 行动中心风险模块 V2 视觉差异清单
 
-日期：2026-11-27。基线：docs/prototypes/total-prototype-v2/index.html，原型不修改。视觉部分待用户确认，本次仅实现已授权的“获取最新反馈”按钮。
+日期：2026-11-27。基线：docs/prototypes/total-prototype-v2/index.html，原型不修改。视觉部分已于 2026-11-27 确认并实施。
 
 | 项目 | 当前实现 | V2标准 | 建议修改 | 涉及文件 | 功能影响 |
 |---|---|---|---|---|---|
@@ -20,3 +20,28 @@
 - 新按钮属于单独授权的功能改动；风险模块视觉调整不得改变读取接口、风险计算、权限、路由和复核。
 - 新按钮沿用顶部版本范围；全部活跃版本逐个读取已启用的来源，继续通过既有feedback/read进行TB事实核对、本机入库、校验和审计。未配置来源、权限变化、失败与部分成功均须明确提示。
 - 视觉确认后最小修改shell.js、shell.css，并扩展现有p09-shell-browser-check.cjs；375/768/1440验证溢出、字体、控制台、状态和原有交互。
+
+
+## 确认与实施
+
+用户已确认上述差异清单。本次仅实施“风险关注”“风险工单执行人”两个模块的视觉调整，保留既有接口、风险计算、权限、路由、复核和全部交互。
+
+### 修改文件
+
+- app/public/shell.js：风险模块标题区增加级别图例与真实需求／风险工单计数；需求标题与版本信息拆行；执行人增加文字头像。
+- app/public/shell.css：两个风险模块卡片使用 15px 内距、8px 圆角、#dfe5ef 边框和无阴影；风险组补 hover 阴影与键盘 focus；风险表使用固定布局和 V2 六列宽度；执行人调整头像与标签尺寸。
+- scripts/p09-shell-browser-check.cjs：增加卡片、图例、计数、标题层级、列宽、hover、键盘焦点、头像、标签和窄屏表内滚动检查。
+
+### 验证结果
+
+- node --check app/public/shell.js：通过。
+- node --check scripts/p09-shell-browser-check.cjs：通过。
+- node --test tests/p09-shell.test.mjs tests/p09-risk.test.mjs：23 通过，0 失败，0 跳过。
+- VIKINGPM_TEST_CONFIG=F:\\VikingPM\\security\\integration-test.json，node --test "tests/**/*.test.mjs"：118 通过，0 失败，0 跳过。
+- scripts/p09-shell-browser-check.cjs 连接本地 V2 原型：通过。375／768／1440 无页面水平溢出；375 风险表在卡片内横向滚动；控制台、字体、展开收起、键盘操作和下钻继续通过。
+- 截图：F:/VikingPM/logs/p09-risk-v2-browser-20261127。
+
+### 未复制与仍未覆盖
+
+- V2 演示中的“影响全部内容完成”“需求负责人”“预计完成”等无真实业务依据的信息未复制。
+- 本批仍不等于 P09 全部完成；异常审计闭环、日历外个人时段补录、人员关联等后续范围继续保留。

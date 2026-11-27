@@ -193,9 +193,39 @@ const calendarFixture = {
     assert.equal(await page.locator('.action-risk-owner > summary .action-owner-signals').count(),2,'counts stay visible while task lists are collapsed');
     assert.match(await page.locator('.action-risk.high').innerText(),/接口延期/);
     assert.match(await page.locator('.action-risk.high').innerText(),/提交时计划 72%/);
+    const riskCard = page.locator('.action-main .action-risk-section');
+    const riskCardStyle = await riskCard.evaluate(element => { const style = getComputedStyle(element); return { padding: style.padding, borderRadius: style.borderRadius, borderColor: style.borderColor, boxShadow: style.boxShadow }; });
+    assert.deepEqual(riskCardStyle, { padding: '15px', borderRadius: '8px', borderColor: 'rgb(223, 229, 239)', boxShadow: 'none' });
+    assert.equal(await riskCard.locator('.risk-legend .pill').count(), 3, 'risk legend keeps high, watch and normal levels');
+    assert.equal((await riskCard.locator('.risk-section-count').innerText()).replace(/\s+/g, ' '), '2 个需求 · 2 张工单');
+    assert.equal(await riskCard.locator('.risk-group-title strong').first().evaluate(element => getComputedStyle(element).fontSize), '16px');
+    const riskMeta = await riskCard.locator('.risk-meta').first().evaluate(element => { const style = getComputedStyle(element); return { fontSize: style.fontSize, marginTop: style.marginTop }; });
+    assert.deepEqual(riskMeta, { fontSize: '12px', marginTop: '5px' });
+    const riskTable = riskCard.locator('.action-risk table').first();
+    assert.equal(await riskTable.evaluate(element => getComputedStyle(element).tableLayout), 'fixed');
+    const riskColumnWidths = await riskTable.evaluate(element => {
+      const total = element.getBoundingClientRect().width;
+      return [...element.querySelectorAll('thead th')].map(th => Math.round(th.getBoundingClientRect().width / total * 100));
+    });
+    for (const [index, expected] of [19, 11, 11, 10, 12, 37].entries()) assert.ok(Math.abs(riskColumnWidths[index] - expected) <= 1, 'risk column ' + (index + 1) + ' width is ' + riskColumnWidths[index] + '%');
+    await page.locator('.action-risk').first().hover();
+    assert.notEqual(await page.locator('.action-risk').first().evaluate(element => getComputedStyle(element).boxShadow), 'none', 'risk group shows hover elevation');
+    assert.equal(await page.locator('.action-risk > summary').first().evaluate(element => element.tabIndex >= 0), true, 'risk summary stays keyboard focusable');
+    assert.equal(await page.evaluate(() => [...document.styleSheets].some(sheet => { try { return [...sheet.cssRules].some(rule => rule.selectorText && rule.selectorText.includes('.action-risk > summary:focus-visible')); } catch { return false; } })), true, 'risk summary has a visible keyboard focus style');
+    assert.equal(await page.locator('.action-risk-owner .avatar').count(), 2, 'each risk executor gets a text avatar');
+    const avatarStyle = await page.locator('.action-risk-owner .avatar').first().evaluate(element => { const style = getComputedStyle(element); return { width: style.width, height: style.height, borderRadius: style.borderRadius, backgroundColor: style.backgroundColor, color: style.color }; });
+    assert.deepEqual(avatarStyle, { width: '30px', height: '30px', borderRadius: '50%', backgroundColor: 'rgb(233, 237, 255)', color: 'rgb(41, 74, 174)' });
+    assert.equal(await page.locator('.action-risk-owner .owner-name').first().evaluate(element => getComputedStyle(element).marginBottom), '9px');
+    assert.equal(await page.locator('.action-risk-owner .action-owner-signals').first().evaluate(element => getComputedStyle(element).gap), '5px');
+    const ownerPillStyle = await page.locator('.action-risk-owner .action-owner-signals .pill').first().evaluate(element => { const style = getComputedStyle(element); return { padding: style.padding, fontSize: style.fontSize }; });
+    assert.deepEqual(ownerPillStyle, { padding: '3px 6px', fontSize: '10px' });
     for(const width of [375,768,1440]){
       await page.setViewportSize({width,height:1000});
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,width+'px action risk page has no horizontal overflow');
+      if (width === 375) {
+        assert.equal(await page.locator('.action-risk .table-wrap').first().evaluate(element => element.scrollWidth > element.clientWidth), true, '375px risk table scrolls inside its card');
+        assert.equal(await page.locator('.action-risk .table-wrap').first().evaluate(element => getComputedStyle(element).overflowX), 'auto');
+      }
       await page.screenshot({path:path.join(output,'p09-risk-'+width+'.png'),fullPage:true});
     }
     await page.locator('.action-risk > summary').first().click();assert.equal(await page.locator('.action-risk[open]').count(),1);
