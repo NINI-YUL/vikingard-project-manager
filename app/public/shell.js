@@ -392,8 +392,10 @@ export function syncTargetVersions(versions, selectedVersionId = '') {
 
 async function syncLatestTb() {
   const control = $('tb-sync');
+  if (control.disabled) return;
   const originalText = control.textContent;
   control.disabled = true;
+  $('feedback-sync').disabled = true;
   control.textContent = '正在获取…';
   clearMessage();
   try {
@@ -431,7 +433,56 @@ async function syncLatestTb() {
     if (error.status !== 401) showMessage('获取最新 TB 失败：' + error.message, 'error');
   } finally {
     control.disabled = false;
+    $('feedback-sync').disabled = false;
     control.textContent = originalText;
+  }
+}
+
+async function syncLatestFeedback() {
+  const control = $('feedback-sync');
+  if (control.disabled) return;
+  control.disabled = true;
+  $('tb-sync').disabled = true;
+  control.textContent = '正在获取反馈…';
+  clearMessage();
+  try {
+    const targets = syncTargetVersions(await loadVersions(), $('version-select').value);
+    if (!targets.length) throw new ApiError(404, '没有可读取反馈的活跃版本。');
+    const results = [];
+    for (const version of targets) {
+      let readCount = 0;
+      try {
+        const overview = await api('/api/feedback/versions/' + version.id);
+        const sources = (overview.sources ?? []).filter(source => source.enabled);
+        if (!sources.length) throw new ApiError(409, '未配置可用反馈来源，请在功能验收核对反馈来源。');
+        for (const source of sources) {
+          const result = await api('/api/feedback/read', {
+            method: 'POST',
+            body: { sourceId: source.id, versionId: version.id, reason: '顶部按钮手动获取最新反馈并核对当前 TB 事实' }
+          });
+          readCount += result.readCount;
+        }
+        results.push({ version, readCount });
+      } catch (error) {
+        results.push({ version, readCount, error });
+        if ([401, 403].includes(error.status)) break;
+      }
+    }
+    state.versions = null;
+    state.management.clear();
+    state.tasks.clear();
+    await route();
+    const succeeded = results.filter(item => !item.error);
+    const errors = results.filter(item => item.error).map(item => item.version.displayName + '：' + item.error.message);
+    const unfinished = targets.length - succeeded.length;
+    const counts = succeeded.map(item => item.version.displayName + '读取 ' + item.readCount + ' 条来源记录').join('；');
+    showMessage((unfinished ? '获取最新反馈未全部完成：' : '已获取最新反馈：') + succeeded.length + '/' + targets.length + ' 个版本完成。' + counts + (errors.length ? '。' + errors.join('；') : '') + '。记录包含已有提交；有效性校验和风险复核仍按现有规则执行。', unfinished ? 'error' : 'success');
+  } catch (error) {
+    if (error.status !== 401) showMessage('获取最新反馈失败：' + error.message, 'error');
+  } finally {
+    control.disabled = false;
+    $('tb-sync').disabled = false;
+    control.textContent = '获取最新反馈';
   }
 }
 
@@ -2385,8 +2436,13 @@ async function boot() {
     $('side-user').textContent = state.actor.displayName + ' · ' + (ROLE_NAMES[state.actor.role] ?? '权限未知');
     $('role-chip').textContent = ROLE_NAMES[state.actor.role] ?? '权限未知';
     const canSync = ['admin', 'owner'].includes(state.actor.role);
+    $('source-sync-controls').hidden = !canSync;
     $('tb-sync').hidden = !canSync;
-    if (canSync) $('tb-sync').addEventListener('click', syncLatestTb);
+    $('feedback-sync').hidden = !canSync;
+    if (canSync) {
+      $('tb-sync').addEventListener('click', syncLatestTb);
+      $('feedback-sync').addEventListener('click', syncLatestFeedback);
+    }
     $('logout').addEventListener('click', async () => {
       try {
         await api('/auth/logout', { method: 'POST', body: {} });

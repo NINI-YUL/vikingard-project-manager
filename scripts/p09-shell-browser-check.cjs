@@ -184,6 +184,7 @@ const calendarFixture = {
     await page.goto(origin);
     await page.locator('.action-grid').waitFor();
     assert.equal(await page.locator('#tb-sync').isVisible(), false);
+    assert.equal(await page.locator('#feedback-sync').isVisible(), false);
     assert.equal(await metric(3).innerText(), '2');
     assert.equal(await metric(4).innerText(), '1');
     assert.deepEqual(await page.locator('.metrics .metric-value').allTextContents(),['1','1','2','2','1']);
@@ -761,6 +762,21 @@ const calendarFixture = {
       syncCalls.push(new URL(route.request().url()).pathname.split('/').at(-2));
       await route.fulfill({ json: { status: 'succeeded', importedCount: 6, issueCount: 0 } });
     });
+    const feedbackCalls = [];
+    let feedbackMode = 'success';
+    await page.route('**/api/feedback/versions/*', route => route.fulfill({ json: { sources: feedbackMode === 'no-source' ? [] : [{ id: 'enabled-source', enabled: true }, { id: 'disabled-source', enabled: false }] } }));
+    await page.route('**/api/feedback/read', async route => {
+      assert.equal(route.request().method(), 'POST');
+      assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
+      const input = route.request().postDataJSON();
+      assert.equal(input.sourceId, 'enabled-source');
+      assert.equal(input.reason, '顶部按钮手动获取最新反馈并核对当前 TB 事实');
+      feedbackCalls.push(input);
+      await wait(100);
+      const failed = feedbackMode === 'failed' || (feedbackMode === 'partial' && input.versionId === versionIds[1]);
+      if (failed) expectedHttpFailures.set(route.request().url(), 503);
+      await route.fulfill(failed ? { status: 503, json: { error: '测试反馈来源读取失败；未导入本轮记录' } } : { json: { readCount: 3 } });
+    });
     let ownerReads = 0;
     await page.route('**/api/management/versions/*', async route => {
       ownerReads++;
@@ -805,6 +821,45 @@ const calendarFixture = {
     await page.waitForFunction(() => !document.querySelector('#tb-sync').disabled);
     assert.deepEqual(syncCalls, [...versionIds, versionIds[0]]);
     assert.match(await page.locator('#message').innerText(), /同步 6 张工单/);
+    assert.equal(await page.locator('#feedback-sync').isVisible(), true);
+    assert.equal(await page.locator('#tb-sync + #feedback-sync').count(), 1);
+    await page.getByRole('button', { name: '获取最新反馈', exact: true }).click();
+    assert.equal(await page.locator('#tb-sync').isDisabled(), true);
+    await page.waitForFunction(() => !document.querySelector('#feedback-sync').disabled);
+    assert.deepEqual(feedbackCalls.map(c=>c.versionId), [versionIds[0]]);
+    assert.match(await page.locator('#message').innerText(), /已获取最新反馈：1\/1 个版本完成/);
+    await page.selectOption('#version-select', '');
+    await page.getByRole('button', { name: '获取最新反馈', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#feedback-sync').disabled);
+    assert.deepEqual(feedbackCalls.map(c=>c.versionId), [versionIds[0],...versionIds]);
+    assert.match(await page.locator('#message').innerText(), /2\/2 个版本完成/);
+    feedbackMode = 'partial';
+    await page.getByRole('button', { name: '获取最新反馈', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#feedback-sync').disabled);
+    assert.match(await page.locator('#message').innerText(), /未全部完成：1\/2 个版本完成/);
+    assert.match(await page.locator('#message').innerText(), /测试反馈来源读取失败/);
+    await page.selectOption('#version-select', versionIds[0]);
+    feedbackMode = 'no-source';
+    const beforeMissing = feedbackCalls.length;
+    await page.getByRole('button', { name: '获取最新反馈', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#feedback-sync').disabled);
+    assert.equal(feedbackCalls.length,beforeMissing);
+    assert.match(await page.locator('#message').innerText(), /未配置可用反馈来源/);
+    feedbackMode = 'success';
+    for (const width of [375,768,1440]) {
+      await page.setViewportSize({width,height:1000});
+      for (const hash of ['#/action','#/versions/'+versionIds[0],'#/requirements?version='+versionIds[0]+'&requirement=root']) {
+        await page.goto(origin+hash); await page.locator(hash.startsWith('#/action')?'.action-grid':hash.startsWith('#/versions')?'.version-workspace':'.requirement-overview').waitFor();
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,width+'px feedback toolbar '+hash);
+        assert.equal(await page.locator('#tb-sync').isDisabled(),false);
+        assert.equal(await page.locator('#feedback-sync').isDisabled(),false);
+        const buttons=await page.locator('#source-sync-controls').evaluate(element=>[...element.querySelectorAll('button')].map(button=>({top:button.getBoundingClientRect().top,left:button.getBoundingClientRect().left,right:button.getBoundingClientRect().right})));
+        assert.ok(Math.abs(buttons[0].top-buttons[1].top)<1,width+'px refresh buttons stay on the same row');
+        assert.ok(buttons[0].right<=buttons[1].left,width+'px refresh buttons do not overlap');
+      }
+      await page.screenshot({path:path.join(output,'p09-feedback-toolbar-'+width+'.png'),fullPage:true});
+    }
+
     await page.getByRole('link', { name: '配置库', exact: true }).click();
     await page.locator('.config-layout').waitFor();
     assert.equal(await page.locator('.version-scope-panel').count(), 1);

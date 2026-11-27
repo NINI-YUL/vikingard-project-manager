@@ -86,7 +86,7 @@ a { color: var(--primary); }
 .heading { min-width: 0; }
 .title { margin: 0; color: var(--ink); font-size: 22px; font-weight: 700; line-height: 30px; letter-spacing: -.02em; }
 .sub { margin-top: 4px; color: var(--ink-3); font-size: 11px; }
-.toolbar { display: flex; flex: none; align-items: center; gap: 10px; }
+.toolbar { display: flex; flex: 0 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
 .select-label { display: flex; align-items: center; gap: 7px; color: var(--ink-3); font-size: 11px; }
 .select, .input { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--ink-2); background: var(--surface); }
 .select:focus-visible, .input:focus-visible { border-color: var(--primary); }
@@ -149,6 +149,7 @@ td.empty-cell { padding: 28px 14px; color: var(--ink-3); text-align: center; }
 .status.warn::before { background: var(--warning); }
 .status.bad::before { background: var(--critical); }
 
+.source-sync-controls { display: flex; flex: none; align-items: center; gap: 10px; }
 .toolbar-row { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 12px; }
 .field { display: grid; gap: 4px; color: var(--ink-3); font-size: 11px; }
 .field .input, .field .select { min-width: 150px; }
