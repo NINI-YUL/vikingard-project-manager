@@ -619,7 +619,7 @@ const calendarFixture = {
     await prepareActual('2026-11-18'); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' });
     await page.locator('.requirement-timeline-row').first().waitFor();
     assert.equal(actualWrites.at(-1).changes[0].fields.end.mode, 'inherit'); assert.equal(actualWrites.at(-1).changes[0].stage, 'development');
-    assert.match(await page.locator('.requirement-timeline-row').first().innerText(), /实：11.18 - 11.24.*历时待核实/);
+    assert.match(await page.locator('.requirement-timeline-row').first().innerText(), /实：11.18 - 11.24.*已完成 [\d.]+ 个工作日/);
     await page.locator('.requirement-timeline-row').first().click(); await page.getByRole('button', { name: '修改实际时间', exact: true }).click(); await actualEditor.locator('.actual-time-history').waitFor();
     await prepareActual('2026-12-01', '2026-12-03'); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' });
     await page.locator('.requirement-timeline-row').first().waitFor(); assert.equal(await page.locator('.requirement-timeline-row').first().locator('.requirement-actual-bar').count(), 0);

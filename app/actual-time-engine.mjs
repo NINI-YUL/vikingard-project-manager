@@ -1,4 +1,4 @@
-import {dayOf,validDay} from './management-engine.mjs';
+import {dayOf,validDay,calendarHours,durationDays} from './management-engine.mjs';
 
 export const actualStages=['development','test'];
 export const roundKey=round=>round.anchors?.[0]??'empty';
@@ -18,8 +18,28 @@ export function sameActual(a,b){
 export const orderedPair=pair=>!pair.start||!pair.end||(validDay(pair.start)||validDay(pair.end)?dayOf(pair.start)<=dayOf(pair.end):new Date(pair.start)<=new Date(pair.end));
 const displayInstant=(value,source)=>sameActual(value,source)?source:validDay(value)?value+'T00:00:00+08:00':value;
 
+// Legacy date corrections cover the whole company workday, without storing invented clock times.
+function confirmedHours(round,pair,{calendar={},now=new Date()}={}){
+  if(!pair?.start||!orderedPair(pair))return null;
+  const bound=(value,source,end=false)=>{
+    const v=sameActual(value,source)?source:value;
+    if(!validDay(v))return new Date(v);
+    const at=new Date(v+'T00:00:00+08:00');if(end)at.setUTCDate(at.getUTCDate()+1);return at;
+  };
+  const start=bound(pair.start,round.source.start),end=pair.end?bound(pair.end,round.source.end,true):new Date(now);
+  if(end<start)return pair.end?null:0;
+  try{
+    let hours=calendarHours(start,end,calendar);
+    for(const span of round.excludedIntervals??[]){
+      const from=new Date(Math.max(start.getTime(),new Date(span.start).getTime())),to=new Date(Math.min(end.getTime(),new Date(span.end).getTime()));
+      if(to>from)hours-=calendarHours(from,to,calendar);
+    }
+    return Math.max(0,hours);
+  }catch{return null;}
+}
+
 // Source event IDs survive repeated syncs; array positions do not survive late history.
-export function correctTiming(source,records){
+export function correctTiming(source,records,options={}){
   const result=structuredClone(source),corrections=[];
   for(const stage of actualStages){
     const original=source[stage]??{rounds:[],unknown:true,workingDays:null};
@@ -46,13 +66,13 @@ export function correctTiming(source,records){
       if(!orderedPair(pair))view.conflicts.push('range');
       const effective=orderedPair(pair)?pair:c.last_valid;
       const changed=['start','end'].some(f=>!sameActual(effective[f],round.source[f]));
-      round={...round,start:displayInstant(effective.start,round.source.start),end:displayInstant(effective.end,round.source.end),correctionId:c.id,dateCorrected:true,durationUnverified:changed||round.hours===null,conflicts:view.conflicts};
-      if(round.durationUnverified){round.hours=null;round.workingDays=null;}
+      const hours=changed||round.hours==null?confirmedHours(round,effective,options):round.hours;
+      round={...round,start:displayInstant(effective.start,round.source.start),end:displayInstant(effective.end,round.source.end),correctionId:c.id,dateCorrected:true,durationUnverified:hours===null,hours,workingDays:hours===null?null:durationDays(hours),conflicts:view.conflicts};
       if(index===-1)rounds.push(round);else rounds[index]=round;
       corrections.push({...view,pending:false,key:round.key,source:round.source,effective,message:view.conflicts.length?'来源时间有变化，待核对':null});
     }
-    const unverified=rounds.some(r=>r.durationUnverified);
-    result[stage]={...original,rounds,...(rounds.some(r=>r.dateCorrected)?{dateCorrected:true,durationUnverified:unverified,unknown:unverified||original.unknown,...(unverified?{hours:null,workingDays:null,currentWorkingDays:null}:{})}:{})};
+    const unknown=!rounds.length||rounds.some(r=>r.hours==null),hours=unknown?null:rounds.reduce((n,r)=>n+r.hours,0);
+    result[stage]={...original,rounds,...(rounds.some(r=>r.dateCorrected)?{dateCorrected:true,durationUnverified:unknown,unknown,hours,workingDays:unknown?null:durationDays(hours),currentWorkingDays:rounds.at(-1).workingDays}:{})};
   }
   return {timing:result,corrections};
 }

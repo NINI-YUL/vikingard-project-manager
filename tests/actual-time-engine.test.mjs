@@ -7,12 +7,12 @@ const source=(rounds)=>({development:{rounds,unknown:rounds.some(r=>r.hours===nu
 const round=(anchors,start,end,hours=3)=>({anchors,start,end,hours,workingDays:hours===null?null:0.4});
 const correction=(fields,anchors=['s','e'])=>({id:'manual',stage:'development',anchors,fields,revision:1,last_valid:{start:'2026-11-23',end:'2026-11-26'}});
 const date=(value,source)=>({mode:'date',value,source});
-test('actual correction fills missing start independently, preserves raw facts and marks unverified duration',()=>{
+test('actual correction fills missing start independently, preserves raw facts and computes the confirmed workdays',()=>{
  const raw=source([round(['e'],null,'2026-11-26T02:00:00Z',null)]),before=structuredClone(raw);
  const output=correctTiming(raw,[correction({start:date('2026-11-23',null)},['e'])]);
- assert.deepEqual(raw,before);assert.equal(output.timing.development.workingDays,null);
+ assert.deepEqual(raw,before);assert.equal(output.timing.development.workingDays,3.2);
  const span=actualTimelineSpan({semantic:'delivered',timing:output.timing},'2026-11-27');
- assert.equal(span.startKey,'2026-11-23');assert.equal(span.endKey,'2026-11-26');assert.equal(span.completed,true);assert.match(timelineActualText(span),/历时待核实/);
+ assert.equal(span.startKey,'2026-11-23');assert.equal(span.endKey,'2026-11-26');assert.equal(span.completed,true);assert.match(timelineActualText(span),/已完成 3.2 个工作日/);assert.doesNotMatch(timelineActualText(span),/历时待核实/);
  assert.equal(output.corrections[0].conflicts.length,0);
 });
 test('only overridden fields conflict; same source value and unrelated changes remain valid',()=>{
@@ -59,6 +59,40 @@ test('minute values use Beijing time, reject invalid clocks and compare same-day
 });
 test('minute corrections detect intraday source changes and keep old date-only corrections readable',()=>{
  const c=correction({start:date('2026-11-23T03:00:00.000Z','2026-11-23T02:00:00.000Z')});
- const result=correctTiming(source([round(['s','e'],'2026-11-23T02:30:00Z','2026-11-23T04:00:00Z')]),[c]);assert.deepEqual(result.corrections[0].conflicts,['start']);assert.equal(result.timing.development.rounds[0].start,'2026-11-23T03:00:00.000Z');assert.equal(result.timing.development.workingDays,null);
- const legacy=correctTiming(source([round(['s','e'],'2026-11-23T02:30:00Z','2026-11-23T04:00:00Z')]),[correction({start:date('2026-11-22','2026-11-23')})]);assert.equal(legacy.corrections[0].effective.start,'2026-11-22');assert.equal(legacy.timing.development.durationUnverified,true);
+ const result=correctTiming(source([round(['s','e'],'2026-11-23T02:30:00Z','2026-11-23T04:00:00Z')]),[c]);assert.deepEqual(result.corrections[0].conflicts,['start']);assert.equal(result.timing.development.rounds[0].start,'2026-11-23T03:00:00.000Z');assert.equal(result.timing.development.workingDays,0.2);
+ const legacy=correctTiming(source([round(['s','e'],'2026-11-23T02:30:00Z','2026-11-23T04:00:00Z')]),[correction({start:date('2026-11-22','2026-11-23')})]);assert.equal(legacy.corrections[0].effective.start,'2026-11-22');assert.equal(legacy.timing.development.durationUnverified,false);assert.equal(legacy.timing.development.hours,3);
+});
+
+const clock=value=>value+'+08:00';
+test('confirmed dates use company holidays, replacement shifts and inclusive legacy days without changing stored precision',()=>{
+ const c=correction({start:date('2026-11-12','2026-11-18'),end:date('2026-11-16','2026-11-18')});
+ const before=structuredClone(c),raw=source([round(['s','e'],'2026-11-18T02:20:00Z','2026-11-18T02:21:00Z',1/60)]);
+ const calendar={'2026-11-13':false,'2026-11-14':{working:true,intervals:[{start:'10:00',end:'12:00'}]}};
+ const output=correctTiming(raw,[c],{calendar});
+ assert.equal(output.timing.development.hours,17);assert.equal(output.timing.development.workingDays,2.3);
+ assert.equal(output.corrections[0].effective.start,'2026-11-12');assert.deepEqual(c,before);
+});
+test('confirmed minute intervals recalculate duration and clip known paused/processing spans to this round',()=>{
+ const maps={dev:{semantic:'developing',markers:['development_start']},pause:{semantic:'paused',markers:[]},processing:{semantic:'processing',markers:[]},done:{semantic:'delivered',markers:['development_end']}};
+ const events=[['s','09:00','dev'],['p','10:00','pause'],['r','11:00','dev'],['wait','14:00','processing'],['resume','15:00','dev'],['e','18:00','done'],['s2','18:01','dev'],['e2','18:02','done']].map(([id,time,statusId])=>({id,at:clock('2026-11-23T'+time),statusId}));
+ const raw=timing(events,maps,{syncStartAt:'2026-11-01',now:new Date('2026-11-24')});
+ assert.equal(raw.development.rounds[0].hours,5.5);
+ const c=correction({start:date(clock('2026-11-23T10:30'),clock('2026-11-23T09:00')),end:date(clock('2026-11-23T16:00'),clock('2026-11-23T18:00'))},raw.development.rounds[0].anchors);
+ const result=correctTiming(raw,[c]);assert.equal(result.timing.development.hours,2.5);assert.equal(result.timing.development.rounds[1].correctionId,undefined);
+ assert.equal(correctTiming(raw,[]).timing.development.hours,raw.development.hours);
+});
+test('confirmed ongoing interval accumulates only through now, excluding an open pause; future starts remain unstarted',()=>{
+ const maps={dev:{semantic:'developing',markers:['development_start']},pause:{semantic:'paused',markers:[]}};
+ const events=[{id:'s',at:clock('2026-11-23T10:00'),statusId:'dev'},{id:'p',at:clock('2026-11-23T11:00'),statusId:'pause'}];
+ const now=new Date(clock('2026-11-23T15:00')),raw=timing(events,maps,{syncStartAt:'2026-11-01',now});
+ const c=correction({start:date(clock('2026-11-23T09:00'),events[0].at)},['s','p']);
+ const result=correctTiming(raw,[c],{now});assert.equal(result.timing.development.hours,2);assert.equal(result.timing.development.rounds[0].end,null);
+ c.fields.start=date(clock('2026-11-24T09:00'),events[0].at);const future=correctTiming(raw,[c],{now});assert.equal(future.timing.development.hours,0);assert.equal(actualTimelineSpan({semantic:'developing',timing:future.timing},'2026-11-23').state,'not_started');
+});
+test('confirmed multi-round hours are aggregated before rounding and unknown starts do not become zero',()=>{
+ const raw=source([round(['s','e'],clock('2026-11-23T10:00'),clock('2026-11-23T10:01'),1/60),round(['s2','e2'],clock('2026-11-24T10:00'),clock('2026-11-24T10:01'),1/60)]);
+ const c=correction({start:date(clock('2026-11-23T09:59'),raw.development.rounds[0].start)});
+ const result=correctTiming(raw,[c]);assert.equal(result.timing.development.workingDays,0.1);assert.equal(result.timing.development.hours,3/60);
+ c.fields.start={mode:'unknown',source:raw.development.rounds[0].start};const unknown=correctTiming(raw,[c]);assert.equal(unknown.timing.development.hours,null);assert.equal(unknown.timing.development.unknown,true);
+ const tooLong=correctTiming(source([]),[correction({start:date('1900-01-01',null),end:date('2200-01-01',null)},[])]);assert.equal(tooLong.timing.development.hours,null);
 });

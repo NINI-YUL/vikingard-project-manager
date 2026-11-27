@@ -1282,9 +1282,9 @@ async function openActualTimeEditor(version, fact, onSaved) {
       body.append(fields);
       const reasonInput = node('textarea'); reasonInput.value = reason; reasonInput.required = true; reasonInput.maxLength = 2000; reasonInput.setAttribute('aria-label', '修改原因');
       reasonInput.addEventListener('input', () => { reason = reasonInput.value; }); body.append(label('修改原因（本次所有轮次共用）', reasonInput));
-      body.append(node('p', 'note', '按北京时间保存到分钟，允许未来时间。可切换阶段和轮次继续调整，最后一次预览并保存全部修改。未修改字段继续跟随 TB。'));
+      body.append(node('p', 'note', '按北京时间保存到分钟，允许未来时间。确认保存即视为人工核实，按生效起止和公司日历计算工作日，并扣除本轮 TB 已知暂停及其他不计时区间。旧日期修正包含起止当天的工作时段。可切换阶段和轮次一起保存，未修改字段继续跟随 TB。'));
     }
-    if (data.item.timing?.[stage]?.durationUnverified) body.append(node('p', 'note', '历时待核实：人工起止与来源不同，或来源过程不完整。仅填写起止时间不能确认中间的执行与暂停；若 TB 时间正确，可恢复来源后使用原计时结果。'));
+    if (data.item.timing?.[stage]?.durationUnverified) body.append(node('p', 'note', '工作日暂不可计算：请检查实际开始时间是否缺失，以及起止范围是否有效。人工确认的有效起止可直接计算，无需再次核实。'));
     const history = node('details', 'actual-time-history'); history.append(node('summary', null, '修正记录（' + data.history.length + '）'));
     for (const event of data.history) {
       const entry = node('div', 'history-item'), after = event.after_value, before = event.before_value;
@@ -1334,7 +1334,7 @@ async function openActualTimeEditor(version, fact, onSaved) {
       }
       if (d.resolution === 'keep') group.append(node('p', 'note', '保留人工修正，并确认本次 TB 来源。')); summary.append(group);
     }
-    summary.append(node('p', null, '修改原因：' + reason), node('p', 'note', '本次修改一次提交、全部成功或全部不保存。预估时间、TB 状态和完成门槛保持现状；历时无法核实时不补造工作日数。'));
+    summary.append(node('p', null, '修改原因：' + reason), node('p', 'note', '本次修改一次提交、全部成功或全部不保存。预估时间、TB 状态和完成门槛保持现状；确认保存即视为人工核实；缺少开始时间或区间无效时不补造工作日数。'));
     body.replaceChildren(errorBox, summary); errorBox.hidden = true;
     const save = button('确认保存', async () => {
       save.disabled = true;

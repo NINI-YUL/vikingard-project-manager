@@ -32,7 +32,7 @@ test('actual-time PostgreSQL: partial overrides, future dates, sync/reopen/histo
    const before=(await pool.query('SELECT raw_source,source_status_id FROM work_items WHERE id=$1',[itemId])).rows[0];
    const rawEvents=(await pool.query('SELECT raw_source FROM source_activities ORDER BY source_activity_id,revision_hash')).rows;
    id=(await save()).id;const data=await read(),c=data.item.timingCorrections[0];
-   assert.equal(c.effective.start,'2026-11-24');assert.equal(c.effective.end,'2026-11-26T02:00:00.000Z');assert.equal(c.fields.end,undefined);assert.equal(data.item.timing.development.workingDays,null);assert.equal(data.item.sourceTiming.development.rounds[0].start,null);
+   assert.equal(c.effective.start,'2026-11-24');assert.equal(c.effective.end,'2026-11-26T02:00:00.000Z');assert.equal(c.fields.end,undefined);assert.equal(data.item.timing.development.workingDays,2.2);assert.equal(data.item.sourceTiming.development.rounds[0].start,null);
    assert.deepEqual((await pool.query('SELECT raw_source,source_status_id FROM work_items WHERE id=$1',[itemId])).rows[0],before);assert.deepEqual((await pool.query('SELECT raw_source FROM source_activities ORDER BY source_activity_id,revision_hash')).rows,rawEvents);
    assert.equal(data.history[0].after_value.evidence,'经任务执行人核对');assert.equal(data.history[0].actor,'所有者');
   });
