@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {timing} from '../app/management-engine.mjs';
-import {correctTiming} from '../app/actual-time-engine.mjs';
+import {correctTiming,actualValue,orderedPair} from '../app/actual-time-engine.mjs';
 import {actualTimelineSpan,timelineActualText} from '../app/public/shell.js';
 const source=(rounds)=>({development:{rounds,unknown:rounds.some(r=>r.hours===null),hours:3,workingDays:0.4},test:{rounds:[],unknown:true}});
 const round=(anchors,start,end,hours=3)=>({anchors,start,end,hours,workingDays:hours===null?null:0.4});
@@ -47,4 +47,18 @@ test('stable timing anchors include pauses without altering calendar-derived sou
  const events=[['s','2026-11-23T09:00:00+08:00','dev'],['p','2026-11-23T12:00:00+08:00','pause'],['r','2026-11-24T09:00:00+08:00','dev'],['e','2026-11-24T12:00:00+08:00','done']].map(([id,at,statusId])=>({id,at,statusId}));
  const raw=timing(events,maps,{syncStartAt:'2026-11-01',now:new Date('2026-11-27')});assert.deepEqual(raw.development.rounds[0].anchors,['s','p','r','e']);assert.equal(raw.development.hours,6);
  const output=correctTiming(raw,[correction({start:date('2026-11-23','2026-11-23')})]);assert.equal(output.timing.development.hours,6);assert.equal(output.timing.development.durationUnverified,false);
+});
+
+test('minute values use Beijing time, reject invalid clocks and compare same-day chronology',()=>{
+ assert.equal(actualValue('2026-11-27T09:30'),'2026-11-27T01:30:00.000Z');
+ assert.equal(actualValue('2026-11-27T09:30:00+08:00'),'2026-11-27T01:30:00.000Z');
+ assert.equal(actualValue('2026-12-31T23:59'),'2026-12-31T15:59:00.000Z');
+ for(const value of ['2026-02-30T10:00','2026-11-27T24:00','2026-11-27T12:60','2026-11-27T09:30-07:00'])assert.equal(actualValue(value),null);
+ assert.equal(orderedPair({start:actualValue('2026-11-27T10:30'),end:actualValue('2026-11-27T10:29')}),false);
+ assert.equal(orderedPair({start:actualValue('2026-11-27T10:30'),end:actualValue('2026-11-27T10:30')}),true);
+});
+test('minute corrections detect intraday source changes and keep old date-only corrections readable',()=>{
+ const c=correction({start:date('2026-11-23T03:00:00.000Z','2026-11-23T02:00:00.000Z')});
+ const result=correctTiming(source([round(['s','e'],'2026-11-23T02:30:00Z','2026-11-23T04:00:00Z')]),[c]);assert.deepEqual(result.corrections[0].conflicts,['start']);assert.equal(result.timing.development.rounds[0].start,'2026-11-23T03:00:00.000Z');assert.equal(result.timing.development.workingDays,null);
+ const legacy=correctTiming(source([round(['s','e'],'2026-11-23T02:30:00Z','2026-11-23T04:00:00Z')]),[correction({start:date('2026-11-22','2026-11-23')})]);assert.equal(legacy.corrections[0].effective.start,'2026-11-22');assert.equal(legacy.timing.development.durationUnverified,true);
 });

@@ -106,7 +106,7 @@ const calendarFixture = {
       let data;
       if (url.pathname === '/api/me') data = { id: 'test', displayName: '测试用户', role: 'viewer' };
       else if (url.pathname === '/api/versions') data = versions;
-      else if (url.pathname === '/api/status') data = { pollingEnabled: false, actualTimeEditing: true };
+      else if (url.pathname === '/api/status') data = { pollingEnabled: false, actualTimeEditing: true, actualTimeBatch: true };
       else if (url.pathname === '/api/management') data = {
         revision: 1, functions: ['UI界面', 'UI图标', '客户端'], semantics: { not_started: '未开始', developing: '开发中' },
         markers: ['development_start'], defaults: { foundation: ['UI界面', '客户端'], detail: ['UI图标'], schedules: [{ day: 2, time: '10:00' }], concurrency: 3 },
@@ -137,23 +137,36 @@ const calendarFixture = {
     });
     await page.route('**/healthz', route => route.fulfill({ json: { loginEnabled: true } }));
     const metric = index => page.locator('.metric-card').nth(index).locator('.metric-value');
-    const { correctTiming } = await import(pathToFileURL(path.join(root, 'app/actual-time-engine.mjs')).href);
+    const { correctTiming, datePair, actualValue } = await import(pathToFileURL(path.join(root, 'app/actual-time-engine.mjs')).href);
     const actualSource = structuredClone(facts[1].timing); actualSource.development.rounds[0].anchors = ['source-start', 'source-end'];
     actualSource.development.rounds[0].hours = 22.5; actualSource.development.rounds[0].workingDays = 3;
-    let actualRecord = null, actualSnapshot = 1, rejectActualSave = false;
+    let actualRecords = [], actualSnapshot = 1, rejectActualSave = false;
     const actualWrites = [], actualHistory = [];
-    const actualFact = () => ({ ...facts[1], sourceTiming: actualSource, ...(() => { const result = correctTiming(actualSource, actualRecord ? [actualRecord] : []); return { timing: result.timing, timingCorrections: result.corrections }; })() });
+    const actualFact = () => ({ ...facts[1], sourceTiming: actualSource, ...(() => { const result = correctTiming(actualSource, actualRecords); return { timing: result.timing, timingCorrections: result.corrections }; })() });
     await page.route('**/api/management/versions/*/items/*/actual-time', async route => {
       if (route.request().method() === 'POST') {
         const input = route.request().postDataJSON(); actualWrites.push(input);
         assert.equal(route.request().headers()['x-csrf-token'], 'fake-csrf');
+        assert.ok(Array.isArray(input.changes)); assert.equal(input.evidence, undefined);
         if (rejectActualSave) { rejectActualSave = false; actualSnapshot++; expectedHttpFailures.set(route.request().url(), 409); return route.fulfill({ status: 409, json: { error: '来源或修正记录已变化，请重新读取并核对后保存' } }); }
         assert.equal(input.snapshot, 'snapshot-' + actualSnapshot);
-        const fields = input.resolution === 'restore' ? {} : Object.fromEntries(Object.entries(input.fields).filter(([, f]) => f.mode !== 'inherit').map(([key, value]) => [key, { ...value, source: key === 'start' ? '2026-11-19' : '2026-11-24' }]));
-        actualRecord = Object.keys(fields).length ? { id: 'manual-record', stage: input.stage, anchors: input.stage === 'test' ? [] : ['source-start', 'source-end'], fields, revision: actualSnapshot, last_valid: { start: '2026-11-19', end: '2026-11-24' } } : null;
+        for (const change of input.changes) {
+          const previous = actualRecords.find(c => c.id === change.correctionId);
+          const raw = actualSource[change.stage]?.rounds?.find(r => r.anchors?.[0] === change.roundKey), source = datePair(raw);
+          const fields = structuredClone(previous?.fields ?? {});
+          for (const [field, value] of Object.entries(change.fields)) {
+            if (value.mode === 'inherit' || change.resolution === 'restore') delete fields[field];
+            else fields[field] = { ...value, ...(value.mode === 'date' ? { value: actualValue(value.value) } : {}), source: source[field] };
+          }
+          if (change.resolution === 'restore') for (const field of Object.keys(fields)) delete fields[field];
+          const effective = { ...source }; for (const [field, value] of Object.entries(fields)) effective[field] = value.mode === 'date' ? value.value : null;
+          actualRecords = actualRecords.filter(c => c.id !== previous?.id);
+          const record = { id: previous?.id ?? 'manual-' + change.stage + '-' + change.roundKey, stage: change.stage, anchors: raw?.anchors ?? [], fields, revision: actualSnapshot, last_valid: effective };
+          if (Object.keys(fields).length) actualRecords.push(record);
+          actualHistory.unshift({ actor: '测试所有者', occurred_at: '2026-11-27T02:00:00Z', reason: input.reason, before_value: null, after_value: { stage: change.stage, fields, effective, source, anchors: record.anchors, active: Boolean(Object.keys(fields).length), rebind: change.rebind } });
+        }
         Object.assign(facts[1], actualFact()); actualSnapshot++;
-        actualHistory.unshift({ actor: '测试所有者', occurred_at: '2026-11-27T02:00:00Z', reason: input.reason, before_value: null, after_value: { stage: input.stage, fields, effective: { start: fields.start?.value ?? '2026-11-19', end: fields.end?.value ?? '2026-11-24' }, source: { start: '2026-11-19', end: '2026-11-24' }, evidence: input.evidence, anchors: actualRecord?.anchors ?? [], active: Boolean(actualRecord), rebind: input.rebind } });
-        return route.fulfill({ json: { saved: true, id: 'manual-record' } });
+        return route.fulfill({ json: { saved: true, count: input.changes.length } });
       }
       return route.fulfill({ json: { snapshot: 'snapshot-' + actualSnapshot, item: actualFact(), history: actualHistory } });
     });
@@ -481,7 +494,7 @@ const calendarFixture = {
     await page.route('**/api/status', route => { expectedHttpFailures.set(route.request().url(), 401); return route.fulfill({ status: 401, json: { error: '登录已过期' } }); });
     await page.reload(); await page.locator('#login-view').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#app').isVisible(), false);
-    await page.route('**/api/status', route => route.fulfill({ json: { pollingEnabled: false, actualTimeEditing: true } }));
+    await page.route('**/api/status', route => route.fulfill({ json: { pollingEnabled: false, actualTimeEditing: true, actualTimeBatch: true } }));
     await page.reload(); await page.locator('.requirement-timeline-row').first().waitFor();
 
 
@@ -573,12 +586,15 @@ const calendarFixture = {
     for (const width of [375, 768, 1440]) {
       await page.setViewportSize({ width, height: 900 }); await openActual();
       const editor = page.locator('.actual-time-dialog');
-      await editor.getByLabel('实际开始日期处理方式', { exact: true }).selectOption('date');
+      await editor.getByLabel('实际开始时间处理方式', { exact: true }).selectOption('date');
       await editor.getByLabel('实际开始日期', { exact: true }).fill('2026-12-01');
+      await editor.getByLabel('实际开始时分', { exact: true }).fill('09:30');
       assert.equal(await editor.getByLabel('实际开始日期', { exact: true }).getAttribute('max'), null);
       await editor.getByLabel('计时阶段', { exact: true }).selectOption('test');
       await editor.getByLabel('计时阶段', { exact: true }).selectOption('development');
       assert.equal(await editor.getByLabel('实际开始日期', { exact: true }).inputValue(), '2026-12-01');
+      assert.equal(await editor.getByLabel('实际开始时分', { exact: true }).inputValue(), '09:30');
+      assert.equal(await editor.getByLabel('依据', { exact: true }).count(), 0);
       const headBefore = await editor.locator('.actual-time-head').boundingBox();
       await editor.locator('.actual-time-body').evaluate(element => { element.scrollTop = element.scrollHeight; });
       const headAfter = await editor.locator('.actual-time-head').boundingBox(); assert.equal(headBefore.y, headAfter.y);
@@ -591,9 +607,9 @@ const calendarFixture = {
     await openActual();
     const actualEditor = page.locator('.actual-time-dialog');
     const prepareActual = async (start, end) => {
-      await actualEditor.getByLabel('实际开始日期处理方式', { exact: true }).selectOption('date'); await actualEditor.getByLabel('实际开始日期', { exact: true }).fill(start);
-      if (end) { await actualEditor.getByLabel('实际结束日期处理方式', { exact: true }).selectOption('date'); await actualEditor.getByLabel('实际结束日期', { exact: true }).fill(end); }
-      await actualEditor.getByLabel('修改原因', { exact: true }).fill('人工核对开始'); await actualEditor.getByLabel('依据', { exact: true }).fill('执行人确认');
+      await actualEditor.getByLabel('实际开始时间处理方式', { exact: true }).selectOption('date'); await actualEditor.getByLabel('实际开始日期', { exact: true }).fill(start); await actualEditor.getByLabel('实际开始时分', { exact: true }).fill('09:30');
+      if (end) { await actualEditor.getByLabel('实际结束时间处理方式', { exact: true }).selectOption('date'); await actualEditor.getByLabel('实际结束日期', { exact: true }).fill(end); await actualEditor.getByLabel('实际结束时分', { exact: true }).fill('18:15'); }
+      await actualEditor.getByLabel('修改原因', { exact: true }).fill('人工核对开始');
       await actualEditor.getByRole('button', { name: '预览修改', exact: true }).click(); await actualEditor.locator('.actual-time-preview').waitFor();
     };
     await prepareActual('2026-11-18'); rejectActualSave = true;
@@ -602,28 +618,58 @@ const calendarFixture = {
     await actualEditor.getByRole('button', { name: '重新读取并核对', exact: true }).click(); await actualEditor.locator('.actual-time-history').waitFor();
     await prepareActual('2026-11-18'); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' });
     await page.locator('.requirement-timeline-row').first().waitFor();
-    assert.equal(actualWrites.at(-1).fields.end.mode, 'inherit'); assert.equal(actualWrites.at(-1).stage, 'development');
+    assert.equal(actualWrites.at(-1).changes[0].fields.end.mode, 'inherit'); assert.equal(actualWrites.at(-1).changes[0].stage, 'development');
     assert.match(await page.locator('.requirement-timeline-row').first().innerText(), /实：11.18 - 11.24.*历时待核实/);
     await page.locator('.requirement-timeline-row').first().click(); await page.getByRole('button', { name: '修改实际时间', exact: true }).click(); await actualEditor.locator('.actual-time-history').waitFor();
     await prepareActual('2026-12-01', '2026-12-03'); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' });
     await page.locator('.requirement-timeline-row').first().waitFor(); assert.equal(await page.locator('.requirement-timeline-row').first().locator('.requirement-actual-bar').count(), 0);
     await page.locator('.requirement-timeline-row').first().click(); await page.getByRole('button', { name: '修改实际时间', exact: true }).click(); await actualEditor.locator('.actual-time-history').waitFor();
-    await actualEditor.getByLabel('修改原因', { exact: true }).fill('恢复来源'); await actualEditor.getByLabel('依据', { exact: true }).fill('核对完成');
+    await actualEditor.getByLabel('修改原因', { exact: true }).fill('恢复来源');
     await actualEditor.getByRole('button', { name: '恢复使用 TB 时间', exact: true }).click(); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' });
     await page.locator('.requirement-timeline-row').first().waitFor(); assert.equal(await page.locator('.requirement-timeline-row').first().locator('.requirement-actual-bar').count(), 1);
 
-    actualRecord = { id: 'pending-record', stage: 'development', anchors: ['missing-old-round'], fields: { start: { mode: 'date', value: '2026-11-18', source: null } }, revision: 1, last_valid: { start: '2026-11-18', end: '2026-11-24' } };
+    actualRecords = [{ id: 'pending-record', stage: 'development', anchors: ['missing-old-round'], fields: { start: { mode: 'date', value: '2026-11-18', source: null } }, revision: 1, last_valid: { start: '2026-11-18', end: '2026-11-24' } }];
     await openActual(); assert.match(await actualEditor.innerText(), /来源轮次发生变化/);
     await actualEditor.getByLabel('重新关联目标轮次', { exact: true }).selectOption('source-start');
     await actualEditor.getByRole('checkbox').check();
-    await actualEditor.getByLabel('修改原因', { exact: true }).fill('核对历史轮次'); await actualEditor.getByLabel('依据', { exact: true }).fill('核对原始动态');
+    await actualEditor.getByLabel('修改原因', { exact: true }).fill('核对历史轮次');
     await actualEditor.getByRole('button', { name: '预览修改', exact: true }).click(); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' });
-    assert.equal(actualWrites.at(-1).rebind, true); assert.equal(actualWrites.at(-1).roundKey, 'source-start');
-    actualRecord.fields.start.source = '2026-11-17';
+    assert.equal(actualWrites.at(-1).changes[0].rebind, true); assert.equal(actualWrites.at(-1).changes[0].roundKey, 'source-start');
+    actualRecords[0].fields.start.source = '2026-11-17';
     await openActual(); assert.match(await actualEditor.innerText(), /来源时间有变化，待核对/);
-    await actualEditor.getByLabel('修改原因', { exact: true }).fill('保留核实结果'); await actualEditor.getByLabel('依据', { exact: true }).fill('再次核对');
-    await actualEditor.getByRole('button', { name: '保留人工修正', exact: true }).click(); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' }); assert.equal(actualWrites.at(-1).resolution, 'keep');
-    actualRecord = null; Object.assign(facts[1], actualFact());
+    await actualEditor.getByLabel('修改原因', { exact: true }).fill('保留核实结果');
+    await actualEditor.getByRole('button', { name: '保留人工修正', exact: true }).click(); await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' }); assert.equal(actualWrites.at(-1).changes[0].resolution, 'keep');
+    actualRecords = []; Object.assign(facts[1], actualFact());
+    const originalActualSource = structuredClone(actualSource);
+    actualSource.development.rounds.push(
+      { start: '2026-11-25T02:00:00Z', end: '2026-11-25T03:00:00Z', anchors: ['second-start', 'second-end'], hours: 1, workingDays: 0.2 },
+      { start: '2026-11-26T02:00:00Z', end: '2026-11-26T03:00:00Z', anchors: ['third-start', 'third-end'], hours: 1, workingDays: 0.2 }
+    );
+    await openActual();
+    const writesBeforeBatch = actualWrites.length;
+    await actualEditor.getByLabel('计时轮次', { exact: true }).selectOption('source-start');
+    await actualEditor.getByLabel('实际开始时间处理方式', { exact: true }).selectOption('date');
+    await actualEditor.getByLabel('实际开始日期', { exact: true }).fill('2026-11-18'); await actualEditor.getByLabel('实际开始时分', { exact: true }).fill('09:15');
+    await actualEditor.getByLabel('计时轮次', { exact: true }).selectOption('second-start');
+    await actualEditor.getByLabel('实际结束时间处理方式', { exact: true }).selectOption('date');
+    await actualEditor.getByLabel('实际结束日期', { exact: true }).fill('2026-11-25'); await actualEditor.getByLabel('实际结束时分', { exact: true }).fill('12:45');
+    await actualEditor.getByLabel('计时轮次', { exact: true }).selectOption('third-start');
+    await actualEditor.getByLabel('实际开始时间处理方式', { exact: true }).selectOption('date');
+    await actualEditor.getByLabel('实际开始日期', { exact: true }).fill('2026-11-26'); await actualEditor.getByLabel('实际开始时分', { exact: true }).fill('09:40');
+    await actualEditor.getByLabel('计时阶段', { exact: true }).selectOption('test');
+    await actualEditor.getByLabel('实际开始时间处理方式', { exact: true }).selectOption('date');
+    await actualEditor.getByLabel('实际开始日期', { exact: true }).fill('2026-11-27'); await actualEditor.getByLabel('实际开始时分', { exact: true }).fill('15:30');
+    await actualEditor.getByLabel('计时阶段', { exact: true }).selectOption('development');
+    await actualEditor.getByLabel('计时轮次', { exact: true }).selectOption('source-start');
+    assert.equal(await actualEditor.getByLabel('实际开始时分', { exact: true }).inputValue(), '09:15');
+    await actualEditor.getByLabel('修改原因', { exact: true }).fill('统一核对多轮时间');
+    assert.match(await actualEditor.innerText(), /已修改 4 个轮次/);
+    await actualEditor.getByRole('button', { name: '预览修改', exact: true }).click();
+    assert.equal(await actualEditor.locator('.actual-time-preview-round').count(), 4);
+    await actualEditor.getByRole('button', { name: '确认保存', exact: true }).click(); await actualEditor.waitFor({ state: 'detached' });
+    assert.equal(actualWrites.length - writesBeforeBatch, 1); assert.equal(actualWrites.at(-1).changes.length, 4); assert.equal(actualWrites.at(-1).reason, '统一核对多轮时间');
+    assert.ok(actualWrites.at(-1).changes.some(c => c.stage === 'test')); assert.equal(actualRecords.length, 4);
+    actualRecords = []; Object.assign(actualSource, originalActualSource); Object.assign(facts[1], actualFact());
     const peopleRecords = [{ id: 'owner', displayName: '测试所有者', role: 'owner', active: true, mappingEnabled: true, confirmed: true }, { id: 'person-a', displayName: '测试查看者', role: 'viewer', active: true, mappingEnabled: true, confirmed: true }];
     const permissionWrites = [], identityWrites = [], identityStateWrites = [];
     await page.route('**/api/access', route => route.fulfill({ json: peopleRecords }));

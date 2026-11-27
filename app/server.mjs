@@ -90,7 +90,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
       if(req.method==='GET'&&path==='/api/management')return json(res,200,await managementCatalog(pool));
       const actualTime=path.match(/^\/api\/management\/versions\/([0-9a-f-]{36})\/items\/([0-9a-f-]{36})\/actual-time$/i);
       if(actualTime&&req.method==='GET')return json(res,200,await readActualTime(pool,actor,actualTime[1],actualTime[2]));
-      if(actualTime&&req.method==='POST')return json(res,200,await saveActualTime(pool,actor,actualTime[1],actualTime[2],await body(req,16384)));
+      if(actualTime&&req.method==='POST')return json(res,200,await saveActualTime(pool,actor,actualTime[1],actualTime[2],await body(req,65536)));
       const managementVersion=path.match(/^\/api\/management\/versions\/([0-9a-f-]{36})$/i);
       if(req.method==='GET'&&managementVersion)return json(res,200,await managementResults(pool,managementVersion[1]));
       if(req.method==='POST'&&['/api/management/preview','/api/management/save','/api/management/verify'].includes(path)){
@@ -98,7 +98,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         return json(res,200,path.endsWith('/verify')?await verifyMappings(pool,actor,input):await changeManagement(pool,actor,input,path.endsWith('/save')));
       }
       if (req.method === 'GET' && path === '/api/me') return json(res,200,actor);
-      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P09',actualTimeEditing:true,sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'P09 正式页面壳、真实版本列表与任务下钻已接入；完整管理页面仍在开发。'});
+      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P09',actualTimeEditing:true,actualTimeBatch:true,sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'P09 正式页面壳、真实版本列表与任务下钻已接入；完整管理页面仍在开发。'});
       if (req.method === 'GET' && path === '/api/version-people') {
         requireRole(actor,'admin');
         return json(res,200,(await pool.query('SELECT p.id,p.display_name AS "displayName" FROM people p JOIN identity_mappings i ON i.person_id=p.id WHERE p.active AND i.enabled AND i.confirmed AND i.corp_id=$1 ORDER BY p.display_name,p.id',[config.dingtalk.corpId])).rows);

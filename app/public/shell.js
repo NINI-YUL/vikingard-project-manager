@@ -169,7 +169,7 @@ export function timelineActualText(actual) {
   if (actual.state === 'not_started') return '实：未开始';
   if (actual.state === 'unknown') return '实：实际时间不可判断';
   const end = actual.ended ? timelineShortDay(actual.end) : '';
-  const suffix = actual.completed ? '已完成' : actual.ended ? '实际已结束，状态未完成' : actual.terminal ? '结束时间缺失' : actual.durationUnverified ? '进行中' : actual.workingDays === null || actual.workingDays === undefined ? '进行中 · 历时未知' : '已进行 ' + actual.workingDays + ' 工作日';
+  const suffix = actual.completed ? (actual.workingDays !== null && actual.workingDays !== undefined ? '已完成 ' + actual.workingDays + ' 个工作日' : actual.durationUnverified ? '已完成' : '已完成 · 工作日未知') : actual.ended ? '实际已结束，状态未完成' : actual.terminal ? '结束时间缺失' : actual.durationUnverified ? '进行中' : actual.workingDays === null || actual.workingDays === undefined ? '进行中 · 历时未知' : '已进行 ' + actual.workingDays + ' 工作日';
   return '实：' + timelineShortDay(actual.start) + ' - ' + end + ' · ' + suffix + (actual.durationUnverified ? ' · 历时待核实' : '');
 }
 
@@ -1194,6 +1194,16 @@ function renderTaskPanel(version, tasks, management, current, onClose = () => na
 }
 
 
+export function actualTimeInput(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  if (!dayKey(value)) return '';
+  return dayKey(value) + 'T' + new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value));
+}
+function actualTimeLabel(value) {
+  const time = actualTimeInput(value);
+  return time ? time.replace('T', ' ') + (time.length === 10 ? '（时分未提供）' : '') : '未知';
+}
 async function openActualTimeEditor(version, fact, onSaved) {
   const endpoint = '/api/management/versions/' + version.id + '/items/' + fact.id + '/actual-time';
   const editable = ['owner', 'admin'].includes(state.actor?.role);
@@ -1205,19 +1215,26 @@ async function openActualTimeEditor(version, fact, onSaved) {
   dialog.addEventListener('close', () => dialog.remove(), { once: true }); dialog.showModal();
   const errorBox = node('div', 'error-box'); errorBox.setAttribute('role', 'alert'); errorBox.hidden = true;
   const fail = error => { errorBox.textContent = error?.message || '读取或保存失败，请重试'; errorBox.hidden = false; errorBox.scrollIntoView({ block: 'nearest' }); };
-  let data, stage = fact.typeName?.includes('测试') ? 'test' : 'development', selected, draft, resolution;
-  const drafts = new Map(), day = value => dayKey(value) || '未知';
+  let data, stage = fact.typeName?.includes('测试') ? 'test' : 'development', selected, draft, reason = '', pendingCount;
+  const drafts = new Map(), stageName = value => value === 'test' ? '测试' : '开发';
   const label = (text, control) => { const field = node('label', 'field'); field.append(node('span', null, text), control); return field; };
   const option = (select, value, text) => { const item = node('option', null, text); item.value = value; select.append(item); };
-  const stageName = value => value === 'test' ? '测试' : '开发';
   const rawRounds = () => data.item.sourceTiming?.[stage]?.rounds ?? [];
-  const choices = () => [ ...rawRounds().map((r, i) => ({ key: r.anchors?.[0] ?? 'empty', label: '第 ' + (i + 1) + ' 轮 · ' + day(r.start) + ' 至 ' + day(r.end), raw: r })), ...(rawRounds().length ? [] : [{ key: 'empty', label: '尚无来源轮次（可补充实际日期）', raw: { start: null, end: null } }]), ...(data.item.timingCorrections ?? []).filter(c => c.stage === stage && c.pending).map(c => ({ key: 'pending:' + c.id, label: '待核对修正 · ' + day(c.lastValid?.start) + ' 至 ' + day(c.lastValid?.end), correction: c })) ];
+  const choices = () => [ ...rawRounds().map((r, i) => ({ key: r.anchors?.[0] ?? 'empty', label: '第 ' + (i + 1) + ' 轮 · ' + actualTimeLabel(r.start) + ' 至 ' + actualTimeLabel(r.end), raw: r })), ...(rawRounds().length ? [] : [{ key: 'empty', label: '尚无来源轮次（可补充实际时间）', raw: { start: null, end: null } }]), ...(data.item.timingCorrections ?? []).filter(c => c.stage === stage && c.pending).map(c => ({ key: 'pending:' + c.id, label: '待核对修正 · ' + actualTimeLabel(c.lastValid?.start) + ' 至 ' + actualTimeLabel(c.lastValid?.end), correction: c })) ];
+  const fieldChanged = (d, field) => JSON.stringify(d.fields[field]) !== JSON.stringify(d.initial[field]);
+  const dirty = d => d.resolution || d.rebind || (d.correction?.pending && d.target !== d.initialTarget) || ['start', 'end'].some(f => fieldChanged(d, f));
+  const modified = () => [...drafts.values()].filter(dirty);
+  const updateCount = () => { if (pendingCount) pendingCount.textContent = '已修改 ' + modified().length + ' 个轮次'; };
   const choose = key => {
     selected = choices().find(c => c.key === key) ?? choices().at(-1);
     const correction = selected.correction ?? data.item.timingCorrections?.find(c => c.stage === stage && c.key === selected.key && !c.pending);
     const draftKey = stage + ':' + selected.key;
-    if (!drafts.has(draftKey)) drafts.set(draftKey, { correction, fields: Object.fromEntries(['start', 'end'].map(f => [f, { mode: correction?.fields[f]?.mode ?? 'inherit', value: correction?.fields[f]?.value ?? '' }])), reason: '', evidence: '', target: rawRounds()[0]?.anchors?.[0] ?? 'empty', rebind: false });
-    draft = drafts.get(draftKey); resolution = null; draw();
+    if (!drafts.has(draftKey)) {
+      const fields = Object.fromEntries(['start', 'end'].map(f => [f, { mode: correction?.fields[f]?.mode ?? 'inherit', value: actualTimeInput(correction?.fields[f]?.value) }]));
+      const target = rawRounds()[0]?.anchors?.[0] ?? 'empty';
+      drafts.set(draftKey, { stage, key: selected.key, label: selected.label, correction, fields, initial: structuredClone(fields), target, initialTarget: target, rebind: false, resolution: null, raw: selected.raw });
+    }
+    draft = drafts.get(draftKey); draw();
   };
   const load = async () => {
     body.replaceChildren(node('p', 'note', '正在读取实际时间…'));
@@ -1239,41 +1256,47 @@ async function openActualTimeEditor(version, fact, onSaved) {
       const target = node('select'); target.setAttribute('aria-label', '重新关联目标轮次');
       for (const choice of choices().filter(c => c.raw)) option(target, choice.key, choice.label); target.value = draft.target;
       target.addEventListener('change', () => { draft.target = target.value; draw(); }); body.append(label('重新关联目标轮次', target));
-      if (editable) { const check = node('input'); check.type = 'checkbox'; check.checked = draft.rebind; check.addEventListener('change', () => { draft.rebind = check.checked; }); body.append(label('已核对，确认将这条修正关联到所选轮次', check)); }
-    } else if (draft.correction?.conflicts.length) body.append(node('p', 'notice', '来源时间有变化，待核对。当前继续保留人工值；日期倒置时保留上次有效结果。'));
+      if (editable) { const check = node('input'); check.type = 'checkbox'; check.checked = draft.rebind; check.addEventListener('change', () => { draft.rebind = check.checked; updateCount(); }); body.append(label('已核对，确认将这条修正关联到所选轮次', check)); }
+    } else if (draft.correction?.conflicts.length) body.append(node('p', 'notice', '来源时间有变化，待核对。当前继续保留人工值；时间倒置时保留上次有效结果。'));
     const raw = draft.correction?.pending ? choices().find(c => c.key === draft.target)?.raw : selected.raw;
-    const current = data.item.timing?.[stage]?.rounds?.find(r => r.key === selected.key);
     const comparison = node('dl', 'facts');
     for (const f of ['start', 'end']) {
       const item = node('div', 'fact'), override = draft.correction?.fields[f];
-      const effective = current ? current[f] : draft.correction ? draft.correction.lastValid?.[f] : raw?.[f];
-      item.append(node('dt', null, f === 'start' ? '实际开始' : '实际结束'), node('dd', null, 'TB：' + day(raw?.[f]) + ' ｜ 当前：' + day(effective) + '（' + (override ? override.mode === 'unknown' ? '人工清空' : '人工修正' : '跟随 TB') + '）')); comparison.append(item);
+      const effective = draft.correction ? (draft.correction.effective ?? draft.correction.lastValid)?.[f] : raw?.[f];
+      item.append(node('dt', null, f === 'start' ? '实际开始' : '实际结束'), node('dd', null, 'TB：' + actualTimeLabel(raw?.[f]) + ' ｜ 当前：' + actualTimeLabel(effective) + '（' + (override ? override.mode === 'unknown' ? '人工清空' : '人工修正' : '跟随 TB') + '）')); comparison.append(item);
     }
     body.append(comparison);
     if (editable) {
       const fields = node('div', 'actual-time-grid');
       for (const f of ['start', 'end']) {
-        const box = node('div'), mode = node('select'), input = node('input'); input.type = 'date'; input.value = draft.fields[f].value;
-        const name = f === 'start' ? '实际开始日期' : '实际结束日期'; mode.setAttribute('aria-label', name + '处理方式'); input.setAttribute('aria-label', name);
-        for (const [value, text] of [['inherit', '跟随 TB'], ['date', '指定日期'], ['unknown', '清空为未知']]) option(mode, value, text); mode.value = draft.fields[f].mode;
-        const update = () => { input.hidden = input.disabled = mode.value !== 'date'; input.required = mode.value === 'date'; draft.fields[f].mode = mode.value; };
-        mode.addEventListener('change', update); input.addEventListener('input', () => { draft.fields[f].value = input.value; }); update(); box.append(label(name, mode), input); fields.append(box);
+        const box = node('div'), mode = node('select'), date = node('input'), time = node('input'), inputs = node('div', 'actual-time-inputs');
+        const name = f === 'start' ? '实际开始' : '实际结束'; date.type = 'date'; time.type = 'time'; time.step = '60';
+        date.value = draft.fields[f].value.slice(0, 10); time.value = draft.fields[f].value.includes('T') ? draft.fields[f].value.slice(11, 16) : '';
+        mode.setAttribute('aria-label', name + '时间处理方式'); date.setAttribute('aria-label', name + '日期'); time.setAttribute('aria-label', name + '时分');
+        for (const [value, text] of [['inherit', '跟随 TB'], ['date', '指定时间'], ['unknown', '清空为未知']]) option(mode, value, text); mode.value = draft.fields[f].mode;
+        const update = () => { draft.fields[f].mode = mode.value; inputs.hidden = date.disabled = time.disabled = mode.value !== 'date'; date.required = time.required = mode.value === 'date' && fieldChanged(draft, f); updateCount(); };
+        mode.addEventListener('change', update);
+        for (const input of [date, time]) input.addEventListener('input', () => { draft.fields[f].value = date.value + (time.value ? 'T' + time.value : ''); update(); });
+        update(); inputs.append(date, time); box.append(label(name + '时间', mode), inputs); fields.append(box);
       }
       body.append(fields);
-      const reason = node('textarea'), evidence = node('textarea'); reason.value = draft.reason; evidence.value = draft.evidence;
-      for (const [control, key, name] of [[reason, 'reason', '修改原因'], [evidence, 'evidence', '依据']]) { control.required = true; control.maxLength = 2000; control.setAttribute('aria-label', name); control.addEventListener('input', () => { draft[key] = control.value; }); body.append(label(name, control)); }
-      body.append(node('p', 'note', '按北京时间日期保存，允许未来日期。未修改字段继续跟随 TB；修正不改变工单状态或预估条。执行过程无法核实时，历时显示“待核实”。'));
+      const reasonInput = node('textarea'); reasonInput.value = reason; reasonInput.required = true; reasonInput.maxLength = 2000; reasonInput.setAttribute('aria-label', '修改原因');
+      reasonInput.addEventListener('input', () => { reason = reasonInput.value; }); body.append(label('修改原因（本次所有轮次共用）', reasonInput));
+      body.append(node('p', 'note', '按北京时间保存到分钟，允许未来时间。可切换阶段和轮次继续调整，最后一次预览并保存全部修改。未修改字段继续跟随 TB。'));
     }
+    if (data.item.timing?.[stage]?.durationUnverified) body.append(node('p', 'note', '历时待核实：人工起止与来源不同，或来源过程不完整。仅填写起止时间不能确认中间的执行与暂停；若 TB 时间正确，可恢复来源后使用原计时结果。'));
     const history = node('details', 'actual-time-history'); history.append(node('summary', null, '修正记录（' + data.history.length + '）'));
     for (const event of data.history) {
       const entry = node('div', 'history-item'), after = event.after_value, before = event.before_value;
-      entry.append(node('b', null, event.actor + ' · ' + formatDate(event.occurred_at) + ' · ' + stageName(after.stage)), node('p', null, '原因：' + event.reason), node('p', null, '依据：' + after.evidence));
-      for (const field of ['start', 'end']) entry.append(node('p', 'note', (field === 'start' ? '开始' : '结束') + '：' + day(before?.effective?.[field] ?? after.source?.[field]) + ' → ' + day(after.effective?.[field]) + ' · ' + (after.fields[field] ? after.fields[field].mode === 'unknown' ? '人工清空' : '人工修正' : '跟随 TB')));
+      entry.append(node('b', null, event.actor + ' · ' + formatDate(event.occurred_at) + ' · ' + stageName(after.stage)), node('p', null, '原因：' + event.reason));
+      if (after.evidence) entry.append(node('p', 'note', '历史依据：' + after.evidence));
+      for (const field of ['start', 'end']) entry.append(node('p', 'note', (field === 'start' ? '开始' : '结束') + '：' + actualTimeLabel(before ? before.effective?.[field] : after.source?.[field]) + ' → ' + actualTimeLabel(after.effective?.[field]) + ' · ' + (after.fields[field] ? after.fields[field].mode === 'unknown' ? '人工清空' : '人工修正' : '跟随 TB')));
       entry.append(node('p', 'note', '轮次来源事件：' + (after.anchors.join('、') || '无来源轮次') + (after.rebind ? ' · 人工重新关联' : '') + (after.active ? '' : ' · 已恢复来源'))); history.append(entry);
     }
     body.append(history);
     actions.replaceChildren(button('取消', () => dialog.close(), 'button'));
     if (editable) {
+      pendingCount = node('span', 'note'); actions.append(pendingCount); updateCount();
       actions.append(button('预览修改', () => preview(), 'button primary'));
       if (draft.correction) {
         if (!draft.correction.pending && draft.correction.conflicts.length) actions.append(button('保留人工修正', () => preview('keep'), 'button'));
@@ -1281,26 +1304,42 @@ async function openActualTimeEditor(version, fact, onSaved) {
       }
     }
   };
+  const changeFor = d => {
+    const fields = Object.fromEntries(['start', 'end'].map(f => {
+      if (!fieldChanged(d, f)) {
+        const previous = d.correction?.fields[f];
+        return [f, previous ? { mode: previous.mode, ...(previous.mode === 'date' ? { value: previous.value } : {}) } : { mode: 'inherit' }];
+      }
+      const field = d.fields[f];
+      return [f, { mode: field.mode, ...(field.mode === 'date' ? { value: field.value + ':00+08:00' } : {}) }];
+    }));
+    return { stage: d.stage, roundKey: d.correction?.pending ? d.target : d.key, ...(d.correction ? { correctionId: d.correction.id } : {}), rebind: Boolean(d.correction?.pending && d.rebind), fields, ...(d.resolution ? { resolution: d.resolution } : {}) };
+  };
   const preview = resolve => {
-    resolution = resolve ?? null;
-    if (resolution === 'restore') for (const input of body.querySelectorAll('input[type=date]')) input.required = false;
-    if (!form.reportValidity()) return;
-    if (draft.correction?.pending && resolution !== 'restore' && !draft.rebind) { fail(new Error('请先确认重新关联目标轮次，或恢复来源')); return; }
-    const summary = node('section', 'actual-time-preview'); summary.append(node('h3', null, '确认修改内容'), node('p', null, stageName(stage) + ' · ' + (draft.correction?.pending ? choices().find(c => c.key === draft.target)?.label : selected.label)));
-    for (const f of ['start', 'end']) {
-      const field = draft.fields[f], text = resolution === 'restore' || field.mode === 'inherit' ? '恢复／继续跟随 TB' : field.mode === 'unknown' ? '清空为未知' : field.value;
-      const currentRound = data.item.timing?.[stage]?.rounds?.find(r => r.key === selected.key);
-      const before = currentRound ? currentRound[f] : draft.correction?.lastValid?.[f] ?? selected.raw?.[f];
-      summary.append(node('p', null, (f === 'start' ? '实际开始：' : '实际结束：') + day(before) + ' → ' + text));
+    if (resolve) draft.resolution = resolve;
+    const changed = modified();
+    if (!changed.length) { fail(new Error('请先修改至少一个轮次')); return; }
+    if (!reason.trim()) { fail(new Error('请填写修改原因')); return; }
+    for (const d of changed) {
+      if (d.correction?.pending && d.resolution !== 'restore' && !d.rebind) { fail(new Error(stageName(d.stage) + ' · ' + d.label + '：请确认重新关联或恢复来源')); return; }
+      if (d.resolution !== 'restore') for (const f of ['start', 'end']) if (fieldChanged(d, f) && d.fields[f].mode === 'date' && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d.fields[f].value)) { fail(new Error(stageName(d.stage) + ' · ' + d.label + '：请补充' + (f === 'start' ? '开始' : '结束') + '日期和时分')); return; }
     }
-    summary.append(node('p', null, '原因：' + draft.reason), node('p', null, '依据：' + draft.evidence));
-    if (resolution === 'keep') summary.append(node('p', null, '确认保留人工修正，并以本次 TB 时间作为新的核对依据。'));
-    summary.append(node('p', 'note', '仅修改所选工单、阶段和轮次；预估日期、TB 状态和完成门槛保持现状。'));
+    const changes = changed.map(changeFor), summary = node('section', 'actual-time-preview'); summary.append(node('h3', null, '确认修改内容（' + changes.length + ' 个轮次）'));
+    for (const d of changed) {
+      const group = node('div', 'actual-time-preview-round'); group.append(node('h4', null, stageName(d.stage) + ' · ' + d.label));
+      for (const f of ['start', 'end']) {
+        const field = d.fields[f], text = d.resolution === 'restore' || field.mode === 'inherit' ? '恢复／继续跟随 TB' : field.mode === 'unknown' ? '清空为未知' : field.value.replace('T', ' ');
+        const before = d.correction ? (d.correction.effective ?? d.correction.lastValid)?.[f] : d.raw?.[f];
+        group.append(node('p', null, (f === 'start' ? '实际开始：' : '实际结束：') + actualTimeLabel(before) + ' → ' + text));
+      }
+      if (d.resolution === 'keep') group.append(node('p', 'note', '保留人工修正，并确认本次 TB 来源。')); summary.append(group);
+    }
+    summary.append(node('p', null, '修改原因：' + reason), node('p', 'note', '本次修改一次提交、全部成功或全部不保存。预估时间、TB 状态和完成门槛保持现状；历时无法核实时不补造工作日数。'));
     body.replaceChildren(errorBox, summary); errorBox.hidden = true;
     const save = button('确认保存', async () => {
       save.disabled = true;
       try {
-        await api(endpoint, { method: 'POST', body: { snapshot: data.snapshot, stage, roundKey: draft.correction?.pending ? draft.target : selected.key, ...(draft.correction ? { correctionId: draft.correction.id } : {}), rebind: Boolean(draft.correction?.pending && draft.rebind), fields: draft.fields, ...(resolution ? { resolution } : {}), reason: draft.reason, evidence: draft.evidence, confirmed: true } });
+        await api(endpoint, { method: 'POST', body: { snapshot: data.snapshot, changes, reason, confirmed: true } });
         clearVersionCaches(version.id); dialog.close(); onSaved();
       } catch (error) { fail(error); save.disabled = false; if (error.status === 409) actions.append(button('重新读取并核对', load, 'button')); }
     }, 'button primary');
@@ -2287,7 +2326,7 @@ async function boot() {
       }
       throw error;
     }
-    state.actualTimeReady = (await api('/api/status').catch(() => null))?.actualTimeEditing === true;
+    state.actualTimeReady = (await api('/api/status').catch(() => null))?.actualTimeBatch === true;
     if (!state.actor) return;
     $('boot').hidden = true;
     $('login-view').hidden = true;

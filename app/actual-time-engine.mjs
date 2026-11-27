@@ -1,9 +1,22 @@
-import {dayOf} from './management-engine.mjs';
+import {dayOf,validDay} from './management-engine.mjs';
 
 export const actualStages=['development','test'];
 export const roundKey=round=>round.anchors?.[0]??'empty';
-export const datePair=round=>({start:dayOf(round?.start),end:dayOf(round?.end)});
-export const orderedPair=pair=>!pair.start||!pair.end||pair.start<=pair.end;
+export function actualValue(value){
+  if(validDay(value))return value;
+  if(typeof value!=='string'||!validDay(value.slice(0,10))||!/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|\+08:00)?$/.test(value))return null;
+  const date=new Date(/Z$|\+08:00$/.test(value)?value:value+'+08:00');return Number.isFinite(date.getTime())?date.toISOString():null;
+}
+const sourceValue=value=>!value?null:validDay(value)?value:new Date(value).toISOString();
+export const datePair=round=>({start:sourceValue(round?.start),end:sourceValue(round?.end)});
+export function sameActual(a,b){
+  if(a===b)return true;
+  if(!a||!b)return false;
+  if(validDay(a)||validDay(b))return dayOf(a)===dayOf(b);
+  return new Date(a).getTime()===new Date(b).getTime();
+}
+export const orderedPair=pair=>!pair.start||!pair.end||(validDay(pair.start)||validDay(pair.end)?dayOf(pair.start)<=dayOf(pair.end):new Date(pair.start)<=new Date(pair.end));
+const displayInstant=(value,source)=>sameActual(value,source)?source:validDay(value)?value+'T00:00:00+08:00':value;
 
 // Source event IDs survive repeated syncs; array positions do not survive late history.
 export function correctTiming(source,records){
@@ -28,12 +41,12 @@ export function correctTiming(source,records){
       const pair={...round.source};
       for(const field of ['start','end'])if(c.fields[field]){
         const override=c.fields[field];pair[field]=override.mode==='date'?override.value:null;
-        if(round.source[field]!==override.source&&round.source[field]!==pair[field])view.conflicts.push(field);
+        if(!sameActual(round.source[field],override.source)&&!sameActual(round.source[field],pair[field]))view.conflicts.push(field);
       }
       if(!orderedPair(pair))view.conflicts.push('range');
       const effective=orderedPair(pair)?pair:c.last_valid;
-      const changed=['start','end'].some(f=>effective[f]!==round.source[f]);
-      round={...round,start:effective.start?effective.start+'T00:00:00+08:00':null,end:effective.end?effective.end+'T00:00:00+08:00':null,correctionId:c.id,dateCorrected:true,durationUnverified:changed||round.hours===null,conflicts:view.conflicts};
+      const changed=['start','end'].some(f=>!sameActual(effective[f],round.source[f]));
+      round={...round,start:displayInstant(effective.start,round.source.start),end:displayInstant(effective.end,round.source.end),correctionId:c.id,dateCorrected:true,durationUnverified:changed||round.hours===null,conflicts:view.conflicts};
       if(round.durationUnverified){round.hours=null;round.workingDays=null;}
       if(index===-1)rounds.push(round);else rounds[index]=round;
       corrections.push({...view,pending:false,key:round.key,source:round.source,effective,message:view.conflicts.length?'来源时间有变化，待核对':null});

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createApplication } from '../app/server.mjs';
-import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber, requirementCalendar, sortTimelineItems, actualTimelineSpan, timelineActualText } from '../app/public/shell.js';
+import { parseHash, summarizeManagement, actionHash, selectedFunctions, scopeActionContexts, syncTargetVersions, formatTaskNumber, requirementCalendar, sortTimelineItems, actualTimeInput, actualTimelineSpan, timelineActualText } from '../app/public/shell.js';
 
 import { timing } from '../app/management-engine.mjs';
 
@@ -46,12 +46,12 @@ test('actual timeline selects the stage and extends the latest open round throug
 
   item.typeName = '测试任务';
   item.semantic = 'delivered';
-  item.timing.test = { unknown: false, rounds: [{ start: '2026-11-26T16:30:00Z', end: '2026-11-27T17:00:00+08:00' }] };
+  item.timing.test = { unknown: false, workingDays: 0.1, rounds: [{ start: '2026-11-26T16:30:00Z', end: '2026-11-27T17:00:00+08:00' }] };
   const testSpan = actualTimelineSpan(item, '2026-11-27');
   assert.equal(testSpan.startKey, '2026-11-27');
   assert.equal(testSpan.endKey, '2026-11-27');
   assert.equal(testSpan.completed, true);
-  assert.equal(timelineActualText(testSpan), '实：11.27 - 11.27 · 已完成');
+  assert.equal(timelineActualText(testSpan), '实：11.27 - 11.27 · 已完成 0.1 个工作日');
 });
 
 test('actual timeline keeps missing, future and invalid actual times separate from not started', () => {
@@ -276,4 +276,10 @@ test('configuration save errors stay visible in the top review dialog', async ()
   assert.match(ui, /reviewError/);
   assert.match(ui, /error\.status===503/);
   assert.match(styles, /#mg-review-error/);
+});
+
+test('actual time inputs use Beijing minutes and completed labels include verified total workdays',()=>{
+ assert.equal(actualTimeInput('2026-11-27T16:25:10Z'),'2026-11-28T00:25');assert.equal(actualTimeInput('2026-11-12'),'2026-11-12');assert.equal(actualTimeInput(null),'');
+ const actual={state:'done',start:'2026-11-18T02:00:00Z',end:'2026-11-18T03:00:00Z',ended:true,completed:true,workingDays:0.1};assert.equal(timelineActualText(actual),'实：11.18 - 11.18 · 已完成 0.1 个工作日');
+ const unknown=timelineActualText({...actual,workingDays:null,durationUnverified:true});assert.match(unknown,/已完成 · 历时待核实/);assert.doesNotMatch(unknown,/0 个工作日/);
 });

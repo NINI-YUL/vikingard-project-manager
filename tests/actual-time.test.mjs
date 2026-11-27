@@ -32,13 +32,13 @@ test('actual-time PostgreSQL: partial overrides, future dates, sync/reopen/histo
    const before=(await pool.query('SELECT raw_source,source_status_id FROM work_items WHERE id=$1',[itemId])).rows[0];
    const rawEvents=(await pool.query('SELECT raw_source FROM source_activities ORDER BY source_activity_id,revision_hash')).rows;
    id=(await save()).id;const data=await read(),c=data.item.timingCorrections[0];
-   assert.equal(c.effective.start,'2026-11-24');assert.equal(c.effective.end,'2026-11-26');assert.equal(c.fields.end,undefined);assert.equal(data.item.timing.development.workingDays,null);assert.equal(data.item.sourceTiming.development.rounds[0].start,null);
+   assert.equal(c.effective.start,'2026-11-24');assert.equal(c.effective.end,'2026-11-26T02:00:00.000Z');assert.equal(c.fields.end,undefined);assert.equal(data.item.timing.development.workingDays,null);assert.equal(data.item.sourceTiming.development.rounds[0].start,null);
    assert.deepEqual((await pool.query('SELECT raw_source,source_status_id FROM work_items WHERE id=$1',[itemId])).rows[0],before);assert.deepEqual((await pool.query('SELECT raw_source FROM source_activities ORDER BY source_activity_id,revision_hash')).rows,rawEvents);
    assert.equal(data.history[0].after_value.evidence,'经任务执行人核对');assert.equal(data.history[0].actor,'所有者');
   });
   await t.test('unmodified end follows source; late start conflicts and explicit keep acknowledges it',async()=>{
-   events=[event('e1','2026-11-25T02:00:00Z','done','pending')];await sync();let data=await read();assert.equal(data.item.timingCorrections[0].effective.end,'2026-11-25');
-   assert.deepEqual((await pool.query('SELECT last_valid FROM actual_time_corrections WHERE id=$1',[id])).rows[0].last_valid,{start:'2026-11-24',end:'2026-11-25'});
+   events=[event('e1','2026-11-25T02:00:00Z','done','pending')];await sync();let data=await read();assert.equal(data.item.timingCorrections[0].effective.end,'2026-11-25T02:00:00.000Z');
+   assert.deepEqual((await pool.query('SELECT last_valid FROM actual_time_corrections WHERE id=$1',[id])).rows[0].last_valid,{start:'2026-11-24',end:'2026-11-25T02:00:00.000Z'});
    events=[event('s1','2026-11-23T02:00:00Z','dev','pending'),event('e1','2026-11-25T02:00:00Z','done','dev')];await sync();data=await read();assert.deepEqual(data.item.timingCorrections[0].conflicts,['start']);assert.equal(data.item.timingCorrections[0].effective.start,'2026-11-24');
    await save({correctionId:id,roundKey:'s1',fields:{},resolution:'keep'});data=await read();assert.deepEqual(data.item.timingCorrections[0].conflicts,[]);
    const stale=data.snapshot;await sync();await assert.rejects(save({snapshot:stale,correctionId:id,roundKey:'s1'}),{status:409});
@@ -59,7 +59,7 @@ test('actual-time PostgreSQL: partial overrides, future dates, sync/reopen/histo
   await t.test('a later TB end automatically fills the untouched end of an anchored manual start',async()=>{
    const manual=(await save({fields:{start:{mode:'date',value:'2026-11-25'}}})).id;
    status='done';events.push(event('e2','2026-11-27T02:00:00Z','done','dev'));await sync();
-   const data=await read(),record=data.item.timingCorrections.find(c=>c.id===manual);assert.equal(record.pending,false);assert.equal(record.effective.end,'2026-11-27');assert.equal(record.fields.end,undefined);
+   const data=await read(),record=data.item.timingCorrections.find(c=>c.id===manual);assert.equal(record.pending,false);assert.equal(record.effective.end,'2026-11-27T02:00:00.000Z');assert.equal(record.fields.end,undefined);
    await save({correctionId:manual,fields:{},resolution:'restore'});
   });
   await t.test('stage separation and an empty source round support manual dates without inventing TB history',async()=>{
@@ -70,7 +70,7 @@ test('actual-time PostgreSQL: partial overrides, future dates, sync/reopen/histo
   });
   await t.test('trust boundary, current roles, source locks and stale saves reject without half writes',async()=>{
    const count=(await pool.query('SELECT count(*) FROM actual_time_corrections')).rows[0].count;
-   for(const patch of [{fields:{start:{mode:'date',value:'2026-02-30'}}},{fields:{start:{mode:'date',value:'2026-11-24'},end:{mode:'date',value:'2026-11-23'}}},{reason:''},{evidence:''},{unexpected:true}])await assert.rejects(save(patch),{status:400});
+   for(const patch of [{fields:{start:{mode:'date',value:'2026-02-30'}}},{fields:{start:{mode:'date',value:'2026-11-24'},end:{mode:'date',value:'2026-11-23'}}},{reason:''},{evidence:{}},{unexpected:true}])await assert.rejects(save(patch),{status:400});
    await assert.rejects(save({},viewer),{status:403});
    const rootData=await readActualTime(pool,owner,version.id,rootId);await assert.rejects(saveActualTime(pool,owner,version.id,rootId,{snapshot:rootData.snapshot,stage:'development',roundKey:'empty',fields:{start:{mode:'date',value:'2026-11-24'}},reason:'不能覆盖父单',evidence:'测试',confirmed:true}),{status:400});
    const lock=await pool.connect();try{await lock.query('BEGIN');await lock.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['version:'+version.id]);await assert.rejects(save(),{status:409});}finally{await lock.query('ROLLBACK');lock.release();}
@@ -86,6 +86,25 @@ test('actual-time PostgreSQL: partial overrides, future dates, sync/reopen/histo
    assert.equal((await request()).status,401);assert.equal((await request(view)).status,200);assert.equal((await request(own,'POST',null,{})).status,403);
    const viewerCsrf=(await authenticate(pool,view.token)).csrf;assert.equal((await request(view,'POST',viewerCsrf,{stage:'development'})).status,403);
    const data=await read();const response=await request(own,'POST',own.csrf,{snapshot:data.snapshot,stage:'development',roundKey:'s2',correctionId:id,fields:{},resolution:'restore',reason:'恢复',evidence:'HTTP验证',confirmed:true});assert.equal(response.status,200);
+  });
+  await t.test('batch saves multiple rounds with one reason and minute precision; invalid batches leave no partial writes',async()=>{
+   let data=await read();const rounds=data.item.sourceTiming.development.rounds;
+   const changes=rounds.map((r,index)=>({stage:'development',roundKey:r.anchors[0],fields:{start:{mode:'date',value:['2026-11-23T09:30','2026-11-24T10:15','2026-11-26T14:20'][index]},end:{mode:'date',value:['2026-11-23T11:00','2026-11-24T12:10','2026-11-26T16:40'][index]}}}));
+   const records=async()=>(await pool.query('SELECT id,revision,fields,active FROM actual_time_corrections ORDER BY id')).rows;
+   changes.push({stage:'test',roundKey:'empty',fields:{start:{mode:'date',value:'2026-11-27T15:30'},end:{mode:'date',value:'2026-11-27T17:00'}}});
+   const before=await records(),historyBefore=data.history.length;
+   const bad=structuredClone(changes);bad[1].fields.end.value='2026-11-24T09:00';
+   const submit=(changes,snapshot=data.snapshot)=>saveActualTime(pool,owner,version.id,itemId,{snapshot,changes,reason:'核对三轮执行时间',confirmed:true});
+   await assert.rejects(submit(bad),{status:400});assert.deepEqual(await records(),before);assert.equal((await read()).history.length,historyBefore);
+   const saved=await submit(changes);assert.equal(saved.count,4);assert.equal(saved.ids.length,4);
+   const stale=data.snapshot;data=await read();assert.equal(data.item.timingCorrections.length,4);
+   assert.equal(data.item.timingCorrections.find(c=>c.stage==='development'&&c.key===rounds[0].anchors[0]).effective.start,'2026-11-23T01:30:00.000Z');
+   const entries=data.history.filter(h=>h.reason==='核对三轮执行时间');assert.equal(entries.length,4);assert.equal(new Set(entries.map(h=>h.after_value.batchId)).size,1);assert.ok(entries.every(h=>h.after_value.evidence===undefined));
+   assert.ok(data.history.some(h=>h.after_value.evidence==='经任务执行人核对'));
+   await assert.rejects(submit(changes,stale),{status:409});
+   const restored=data.item.timingCorrections.map(c=>({stage:c.stage,roundKey:c.key,correctionId:c.id,resolution:'restore',fields:{}}));
+   await submit(restored,data.snapshot);assert.equal((await read()).item.timingCorrections.length,0);
+   data=await read();const duplicate=[changes[0],changes[0]];await assert.rejects(submit(duplicate,data.snapshot),{status:400});assert.equal((await read()).item.timingCorrections.length,0);
   });
   await t.test('repeat migration/reconnection preserves corrections and audit',async()=>{
    const before=(await read()).history.length;assert.ok(before>=9);assert.equal(await migrate(pool),0);await pool.end();pool=poolFor({...db,options:'-c search_path='+schema});assert.equal((await read()).history.length,before);

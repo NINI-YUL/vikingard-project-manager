@@ -975,3 +975,8 @@ body.v2-page {
 .actual-time-history { margin-top:18px; font-size:12px; }
 .actual-time-history summary { cursor:pointer; color:var(--ink-2); }
 @media(max-width:600px) { .actual-time-dialog { width:calc(100vw - 24px); max-height:calc(100dvh - 24px); } .actual-time-grid { grid-template-columns:minmax(0,1fr); gap:0; } .actual-time-head, .actual-time-actions, .actual-time-body { padding:14px; } }
+
+.actual-time-inputs { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:8px; margin-bottom:14px; }
+.actual-time-preview-round { padding:10px 0; border-bottom:1px solid var(--line); }
+.actual-time-preview-round h4 { margin:0 0 8px; font-size:13px; }
+.actual-time-actions > .note { margin-right:auto; }
