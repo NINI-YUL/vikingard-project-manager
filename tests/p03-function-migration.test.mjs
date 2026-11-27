@@ -18,7 +18,7 @@ test('P03 catalog upgrade preserves legacy source data and configuration',{skip:
   for(const [index,name] of names.entries())await pool.query('INSERT INTO work_items(id,managed_version_id,source_task_id,title,function_name,structure_issues,raw_source) VALUES($1,$2,$3,$4,$5,$6,$7)',[randomUUID(),version,String(index),'不按标题归类',name,'["existing_issue"]',JSON.stringify({function:name})]);
   await pool.query('INSERT INTO management_rules(scope,scope_key,values) VALUES($1,$2,$3)',['system','system',JSON.stringify({foundation:['UI']})]);
   const before=(await pool.query('SELECT id,function_name,raw_source FROM work_items ORDER BY source_task_id')).rows;
-  assert.equal(await migrate(pool),4);assert.equal(await migrate(pool),0);
+  assert.equal(await migrate(pool),5);assert.equal(await migrate(pool),0);
   const after=(await pool.query('SELECT id,function_name,raw_source,function_resolution,structure_issues FROM work_items ORDER BY source_task_id')).rows;
   assert.deepEqual(after.map(({id,function_name,raw_source})=>({id,function_name,raw_source})),before);
   assert.deepEqual(after.map(i=>i.function_resolution),['legacy_unresolved','unrecognized','confirmed','confirmed','confirmed','missing']);

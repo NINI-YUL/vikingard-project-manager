@@ -21,6 +21,7 @@ const ISSUE_NAMES = {
 };
 const state = {
   actor: null,
+  actualTimeReady: false,
   versions: null,
   management: new Map(),
   tasks: new Map(),
@@ -140,10 +141,10 @@ export function actualTimelineSpan(item, todayKey = dayKey(new Date())) {
   const timing = item.typeName?.includes('测试') ? item.timing?.test : item.timing?.development;
   const rounds = Array.isArray(timing?.rounds) ? timing.rounds : [];
   if (!rounds.length) return { state: item.semantic === 'not_started' ? 'not_started' : 'unknown' };
-  if (timing.unknown || !todayKey) return { state: 'unknown' };
+  if ((timing.unknown && !timing.dateCorrected) || !todayKey) return { state: 'unknown' };
   for (const round of rounds) {
     const start = dayKey(round?.start), end = dayKey(round?.end);
-    if (!start || round.unknown || (round.end != null && (!end || end < start || end > todayKey))) return { state: 'unknown' };
+    if (!start || round.unknown || (round.end != null && (!end || end < start))) return { state: 'unknown' };
   }
   const start = rounds[0].start, startKey = dayKey(start);
   if (startKey > todayKey) return { state: 'not_started' };
@@ -154,7 +155,7 @@ export function actualTimelineSpan(item, todayKey = dayKey(new Date())) {
   const terminal = ['delivered', 'non_delivery'].includes(item.semantic);
   return {
     state: ended ? 'done' : 'doing', start, startKey, end, endKey, ended,
-    completed: ended && terminal, terminal, workingDays: timing.workingDays ?? null
+    completed: ended && terminal, terminal, durationUnverified: Boolean(timing.durationUnverified), workingDays: timing.workingDays ?? null
   };
 }
 
@@ -168,8 +169,8 @@ export function timelineActualText(actual) {
   if (actual.state === 'not_started') return '实：未开始';
   if (actual.state === 'unknown') return '实：实际时间不可判断';
   const end = actual.ended ? timelineShortDay(actual.end) : '';
-  const suffix = actual.completed ? '已完成' : actual.ended ? '已结束' : actual.terminal ? '结束时间缺失' : actual.workingDays === null || actual.workingDays === undefined ? '进行中 · 历时未知' : '已进行 ' + actual.workingDays + ' 工作日';
-  return '实：' + timelineShortDay(actual.start) + ' - ' + end + ' · ' + suffix;
+  const suffix = actual.completed ? '已完成' : actual.ended ? '实际已结束，状态未完成' : actual.terminal ? '结束时间缺失' : actual.durationUnverified ? '进行中' : actual.workingDays === null || actual.workingDays === undefined ? '进行中 · 历时未知' : '已进行 ' + actual.workingDays + ' 工作日';
+  return '实：' + timelineShortDay(actual.start) + ' - ' + end + ' · ' + suffix + (actual.durationUnverified ? ' · 历时待核实' : '');
 }
 
 export function sortTimelineItems(items) {
@@ -1095,7 +1096,7 @@ function factFromManagement(management, taskId) {
   return management?.items?.find(item => item.sourceTaskId === taskId) ?? null;
 }
 
-function renderTaskPanel(version, tasks, management, current, onClose = () => navigate(taskHash(version.id, current.offset, null))) {
+function renderTaskPanel(version, tasks, management, current, onClose = () => navigate(taskHash(version.id, current.offset, null)), onActualSaved = null) {
   const panel = node('aside', 'task-panel');
   panel.setAttribute('aria-label', '任务详情');
   const close = button('关闭', onClose, 'button small');
@@ -1164,6 +1165,17 @@ function renderTaskPanel(version, tasks, management, current, onClose = () => na
     panel.append(section);
   }
 
+  if (onActualSaved && fact && fact.kind !== 'requirement') {
+    const section = node('section', 'panel-section');
+    section.append(node('h3', null, '实际时间'));
+    for (const correction of fact.timingCorrections ?? []) section.append(node('p', correction.conflicts.length ? 'notice' : 'note', correction.message || '已使用人工修正；未修改字段继续跟随 TB。'));
+    const edit = button(['owner', 'admin'].includes(state.actor?.role) ? '修改实际时间' : '查看实际时间记录', () => openActualTimeEditor(version, fact, onActualSaved), 'button small');
+    edit.disabled = !state.actualTimeReady;
+    section.append(edit);
+    if (!state.actualTimeReady) section.append(node('p', 'note', '实际时间修正尚未启用，请联系管理员完成服务更新。'));
+    panel.append(section);
+  }
+
   const historySection = node('section', 'panel-section');
   historySection.append(node('h3', null, '来源历史'));
   const historyActions = node('div', 'section-actions');
@@ -1179,6 +1191,122 @@ function renderTaskPanel(version, tasks, management, current, onClose = () => na
   historySection.append(historyActions, historyBox);
   panel.append(historySection);
   return panel;
+}
+
+
+async function openActualTimeEditor(version, fact, onSaved) {
+  const endpoint = '/api/management/versions/' + version.id + '/items/' + fact.id + '/actual-time';
+  const editable = ['owner', 'admin'].includes(state.actor?.role);
+  const dialog = node('dialog', 'actual-time-dialog'); dialog.setAttribute('aria-label', editable ? '修改实际时间' : '实际时间记录');
+  const head = node('div', 'actual-time-head');
+  head.append(node('h2', 'section-title', editable ? '修改实际时间' : '实际时间记录'), button('关闭', () => dialog.close(), 'button small'));
+  const form = node('form'), body = node('div', 'actual-time-body'), actions = node('div', 'actual-time-actions section-actions');
+  form.append(body, actions); dialog.append(head, form); document.body.append(dialog);
+  dialog.addEventListener('close', () => dialog.remove(), { once: true }); dialog.showModal();
+  const errorBox = node('div', 'error-box'); errorBox.setAttribute('role', 'alert'); errorBox.hidden = true;
+  const fail = error => { errorBox.textContent = error?.message || '读取或保存失败，请重试'; errorBox.hidden = false; errorBox.scrollIntoView({ block: 'nearest' }); };
+  let data, stage = fact.typeName?.includes('测试') ? 'test' : 'development', selected, draft, resolution;
+  const drafts = new Map(), day = value => dayKey(value) || '未知';
+  const label = (text, control) => { const field = node('label', 'field'); field.append(node('span', null, text), control); return field; };
+  const option = (select, value, text) => { const item = node('option', null, text); item.value = value; select.append(item); };
+  const stageName = value => value === 'test' ? '测试' : '开发';
+  const rawRounds = () => data.item.sourceTiming?.[stage]?.rounds ?? [];
+  const choices = () => [ ...rawRounds().map((r, i) => ({ key: r.anchors?.[0] ?? 'empty', label: '第 ' + (i + 1) + ' 轮 · ' + day(r.start) + ' 至 ' + day(r.end), raw: r })), ...(rawRounds().length ? [] : [{ key: 'empty', label: '尚无来源轮次（可补充实际日期）', raw: { start: null, end: null } }]), ...(data.item.timingCorrections ?? []).filter(c => c.stage === stage && c.pending).map(c => ({ key: 'pending:' + c.id, label: '待核对修正 · ' + day(c.lastValid?.start) + ' 至 ' + day(c.lastValid?.end), correction: c })) ];
+  const choose = key => {
+    selected = choices().find(c => c.key === key) ?? choices().at(-1);
+    const correction = selected.correction ?? data.item.timingCorrections?.find(c => c.stage === stage && c.key === selected.key && !c.pending);
+    const draftKey = stage + ':' + selected.key;
+    if (!drafts.has(draftKey)) drafts.set(draftKey, { correction, fields: Object.fromEntries(['start', 'end'].map(f => [f, { mode: correction?.fields[f]?.mode ?? 'inherit', value: correction?.fields[f]?.value ?? '' }])), reason: '', evidence: '', target: rawRounds()[0]?.anchors?.[0] ?? 'empty', rebind: false });
+    draft = drafts.get(draftKey); resolution = null; draw();
+  };
+  const load = async () => {
+    body.replaceChildren(node('p', 'note', '正在读取实际时间…'));
+    try { data = await api(endpoint); drafts.clear(); choose(choices().at(-1).key); }
+    catch (error) { body.replaceChildren(errorBox); fail(error); actions.replaceChildren(button('重新读取', load, 'button')); }
+  };
+  const draw = () => {
+    body.replaceChildren(errorBox); errorBox.hidden = true;
+    body.append(node('p', 'task-number', formatTaskNumber(data.item.key, version.uniqueIdPrefix) + ' · ' + data.item.title));
+    const pickers = node('div', 'actual-time-grid'), stageSelect = node('select'), roundSelect = node('select');
+    stageSelect.setAttribute('aria-label', '计时阶段'); roundSelect.setAttribute('aria-label', '计时轮次');
+    for (const value of ['development', 'test']) option(stageSelect, value, stageName(value)); stageSelect.value = stage;
+    for (const choice of choices()) option(roundSelect, choice.key, choice.label); roundSelect.value = selected.key;
+    stageSelect.addEventListener('change', () => { stage = stageSelect.value; choose(choices().at(-1).key); });
+    roundSelect.addEventListener('change', () => choose(roundSelect.value));
+    pickers.append(label('计时阶段', stageSelect), label('计时轮次', roundSelect)); body.append(pickers);
+    if (draft.correction?.pending) {
+      body.append(node('p', 'notice', '来源轮次发生变化，本条修正尚未套用。请核对后重新关联目标轮次，或恢复使用 TB 时间。'));
+      const target = node('select'); target.setAttribute('aria-label', '重新关联目标轮次');
+      for (const choice of choices().filter(c => c.raw)) option(target, choice.key, choice.label); target.value = draft.target;
+      target.addEventListener('change', () => { draft.target = target.value; draw(); }); body.append(label('重新关联目标轮次', target));
+      if (editable) { const check = node('input'); check.type = 'checkbox'; check.checked = draft.rebind; check.addEventListener('change', () => { draft.rebind = check.checked; }); body.append(label('已核对，确认将这条修正关联到所选轮次', check)); }
+    } else if (draft.correction?.conflicts.length) body.append(node('p', 'notice', '来源时间有变化，待核对。当前继续保留人工值；日期倒置时保留上次有效结果。'));
+    const raw = draft.correction?.pending ? choices().find(c => c.key === draft.target)?.raw : selected.raw;
+    const current = data.item.timing?.[stage]?.rounds?.find(r => r.key === selected.key);
+    const comparison = node('dl', 'facts');
+    for (const f of ['start', 'end']) {
+      const item = node('div', 'fact'), override = draft.correction?.fields[f];
+      const effective = current ? current[f] : draft.correction ? draft.correction.lastValid?.[f] : raw?.[f];
+      item.append(node('dt', null, f === 'start' ? '实际开始' : '实际结束'), node('dd', null, 'TB：' + day(raw?.[f]) + ' ｜ 当前：' + day(effective) + '（' + (override ? override.mode === 'unknown' ? '人工清空' : '人工修正' : '跟随 TB') + '）')); comparison.append(item);
+    }
+    body.append(comparison);
+    if (editable) {
+      const fields = node('div', 'actual-time-grid');
+      for (const f of ['start', 'end']) {
+        const box = node('div'), mode = node('select'), input = node('input'); input.type = 'date'; input.value = draft.fields[f].value;
+        const name = f === 'start' ? '实际开始日期' : '实际结束日期'; mode.setAttribute('aria-label', name + '处理方式'); input.setAttribute('aria-label', name);
+        for (const [value, text] of [['inherit', '跟随 TB'], ['date', '指定日期'], ['unknown', '清空为未知']]) option(mode, value, text); mode.value = draft.fields[f].mode;
+        const update = () => { input.hidden = input.disabled = mode.value !== 'date'; input.required = mode.value === 'date'; draft.fields[f].mode = mode.value; };
+        mode.addEventListener('change', update); input.addEventListener('input', () => { draft.fields[f].value = input.value; }); update(); box.append(label(name, mode), input); fields.append(box);
+      }
+      body.append(fields);
+      const reason = node('textarea'), evidence = node('textarea'); reason.value = draft.reason; evidence.value = draft.evidence;
+      for (const [control, key, name] of [[reason, 'reason', '修改原因'], [evidence, 'evidence', '依据']]) { control.required = true; control.maxLength = 2000; control.setAttribute('aria-label', name); control.addEventListener('input', () => { draft[key] = control.value; }); body.append(label(name, control)); }
+      body.append(node('p', 'note', '按北京时间日期保存，允许未来日期。未修改字段继续跟随 TB；修正不改变工单状态或预估条。执行过程无法核实时，历时显示“待核实”。'));
+    }
+    const history = node('details', 'actual-time-history'); history.append(node('summary', null, '修正记录（' + data.history.length + '）'));
+    for (const event of data.history) {
+      const entry = node('div', 'history-item'), after = event.after_value, before = event.before_value;
+      entry.append(node('b', null, event.actor + ' · ' + formatDate(event.occurred_at) + ' · ' + stageName(after.stage)), node('p', null, '原因：' + event.reason), node('p', null, '依据：' + after.evidence));
+      for (const field of ['start', 'end']) entry.append(node('p', 'note', (field === 'start' ? '开始' : '结束') + '：' + day(before?.effective?.[field] ?? after.source?.[field]) + ' → ' + day(after.effective?.[field]) + ' · ' + (after.fields[field] ? after.fields[field].mode === 'unknown' ? '人工清空' : '人工修正' : '跟随 TB')));
+      entry.append(node('p', 'note', '轮次来源事件：' + (after.anchors.join('、') || '无来源轮次') + (after.rebind ? ' · 人工重新关联' : '') + (after.active ? '' : ' · 已恢复来源'))); history.append(entry);
+    }
+    body.append(history);
+    actions.replaceChildren(button('取消', () => dialog.close(), 'button'));
+    if (editable) {
+      actions.append(button('预览修改', () => preview(), 'button primary'));
+      if (draft.correction) {
+        if (!draft.correction.pending && draft.correction.conflicts.length) actions.append(button('保留人工修正', () => preview('keep'), 'button'));
+        actions.append(button('恢复使用 TB 时间', () => preview('restore'), 'button'));
+      }
+    }
+  };
+  const preview = resolve => {
+    resolution = resolve ?? null;
+    if (resolution === 'restore') for (const input of body.querySelectorAll('input[type=date]')) input.required = false;
+    if (!form.reportValidity()) return;
+    if (draft.correction?.pending && resolution !== 'restore' && !draft.rebind) { fail(new Error('请先确认重新关联目标轮次，或恢复来源')); return; }
+    const summary = node('section', 'actual-time-preview'); summary.append(node('h3', null, '确认修改内容'), node('p', null, stageName(stage) + ' · ' + (draft.correction?.pending ? choices().find(c => c.key === draft.target)?.label : selected.label)));
+    for (const f of ['start', 'end']) {
+      const field = draft.fields[f], text = resolution === 'restore' || field.mode === 'inherit' ? '恢复／继续跟随 TB' : field.mode === 'unknown' ? '清空为未知' : field.value;
+      const currentRound = data.item.timing?.[stage]?.rounds?.find(r => r.key === selected.key);
+      const before = currentRound ? currentRound[f] : draft.correction?.lastValid?.[f] ?? selected.raw?.[f];
+      summary.append(node('p', null, (f === 'start' ? '实际开始：' : '实际结束：') + day(before) + ' → ' + text));
+    }
+    summary.append(node('p', null, '原因：' + draft.reason), node('p', null, '依据：' + draft.evidence));
+    if (resolution === 'keep') summary.append(node('p', null, '确认保留人工修正，并以本次 TB 时间作为新的核对依据。'));
+    summary.append(node('p', 'note', '仅修改所选工单、阶段和轮次；预估日期、TB 状态和完成门槛保持现状。'));
+    body.replaceChildren(errorBox, summary); errorBox.hidden = true;
+    const save = button('确认保存', async () => {
+      save.disabled = true;
+      try {
+        await api(endpoint, { method: 'POST', body: { snapshot: data.snapshot, stage, roundKey: draft.correction?.pending ? draft.target : selected.key, ...(draft.correction ? { correctionId: draft.correction.id } : {}), rebind: Boolean(draft.correction?.pending && draft.rebind), fields: draft.fields, ...(resolution ? { resolution } : {}), reason: draft.reason, evidence: draft.evidence, confirmed: true } });
+        clearVersionCaches(version.id); dialog.close(); onSaved();
+      } catch (error) { fail(error); save.disabled = false; if (error.status === 409) actions.append(button('重新读取并核对', load, 'button')); }
+    }, 'button primary');
+    actions.replaceChildren(button('返回编辑', draw, 'button'), button('取消', () => dialog.close(), 'button'), save);
+  };
+  form.addEventListener('submit', event => { event.preventDefault(); }); await load();
 }
 
 function renderHistoryItems(container, data, kind) {
@@ -1379,7 +1507,7 @@ async function renderRequirements(current, view) {
         const openTask = () => {
           const dialog = node('dialog', 'requirement-task-dialog');
           dialog.setAttribute('aria-label', '任务详情');
-          dialog.append(renderTaskPanel(version, { items: [] }, management, { ...current, taskId: item.sourceTaskId }, () => dialog.close()));
+          dialog.append(renderTaskPanel(version, { items: [] }, management, { ...current, taskId: item.sourceTaskId }, () => dialog.close(), () => { dialog.close(); route(); }));
           dialog.addEventListener('close', () => { dialog.remove(); row.focus(); }, { once: true });
           wrap.append(dialog);
           dialog.showModal();
@@ -2159,6 +2287,8 @@ async function boot() {
       }
       throw error;
     }
+    state.actualTimeReady = (await api('/api/status').catch(() => null))?.actualTimeEditing === true;
+    if (!state.actor) return;
     $('boot').hidden = true;
     $('login-view').hidden = true;
     $('app').hidden = false;

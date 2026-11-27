@@ -950,3 +950,28 @@ body.v2-page {
 .config-page .person-dialog-actions { flex:none; justify-content:flex-end; margin:0; padding:14px 22px; border-top:1px solid #edf0f5; background:#fafbfd; }
 @media(max-width:900px){ .config-page .people-table td { padding:10px 12px; } .config-page .people-table td b { font-size:12px; } .config-page .people-notice-table td { padding:16px 12px; } }
 @media(max-width:600px){ .config-page .people-access-body, .config-page .people-notice-body { padding:0 14px 14px; } .config-page .people-table, .config-page .people-notice-table { min-width:560px; } .config-page .person-actions { gap:6px; } .config-page .person-dialog { width:calc(100vw - 24px); max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); } .config-page .person-dialog > .person-dialog-head { padding:16px; } .config-page .person-dialog-body { padding:14px; } .config-page .person-dialog-actions { padding:12px 14px; } .config-page .people-notice-conditions > div { align-items:flex-start; gap:10px; } .config-page .people-notice-conditions > div > span:first-child { flex-basis:60px; } }
+
+/* Reuse the light configuration-dialog surface for actual-time correction. */
+.actual-time-dialog { width:min(760px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); padding:0; overflow:hidden; border:1px solid var(--line); border-radius:var(--radius-card); color:var(--ink); background:var(--surface); box-shadow:var(--shadow-float); }
+.actual-time-dialog::backdrop { background:rgb(20 31 54 / 25%); }
+.actual-time-dialog[open] { display:flex; flex-direction:column; }
+.actual-time-dialog > form { display:flex; flex-direction:column; min-height:0; }
+.actual-time-head, .actual-time-actions { flex:none; margin:0; padding:16px 22px; background:var(--surface-subtle); }
+.actual-time-head { display:flex; justify-content:space-between; align-items:center; gap:12px; border-bottom:1px solid var(--line); }
+.actual-time-head h2 { margin:0; font-size:17px; }
+.actual-time-body { min-height:0; padding:18px 22px; overflow:auto; overflow-wrap:anywhere; }
+.actual-time-actions { justify-content:flex-end; border-top:1px solid var(--line); }
+.actual-time-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.actual-time-dialog .field { display:block; margin:0 0 14px; font-size:12px; }
+.actual-time-dialog .field > span { display:block; margin-bottom:6px; color:var(--ink-3); }
+.actual-time-dialog :is(input:not([type=checkbox]),select,textarea) { display:block; width:100%; min-width:0; min-height:36px; padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--surface); color:var(--ink); }
+.actual-time-grid > div > input { margin-bottom:14px; }
+.actual-time-dialog textarea { min-height:64px; resize:vertical; }
+.actual-time-dialog input[type=checkbox] { accent-color:var(--primary); }
+.actual-time-dialog .error-box { margin-bottom:14px; }
+.actual-time-dialog .facts { margin-bottom:18px; }
+.actual-time-dialog .fact dd { font-size:12px; }
+.actual-time-preview h3 { margin-top:0; font-size:15px; }
+.actual-time-history { margin-top:18px; font-size:12px; }
+.actual-time-history summary { cursor:pointer; color:var(--ink-2); }
+@media(max-width:600px) { .actual-time-dialog { width:calc(100vw - 24px); max-height:calc(100dvh - 24px); } .actual-time-grid { grid-template-columns:minmax(0,1fr); gap:0; } .actual-time-head, .actual-time-actions, .actual-time-body { padding:14px; } }

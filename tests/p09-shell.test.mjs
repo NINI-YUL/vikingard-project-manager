@@ -65,10 +65,12 @@ test('actual timeline keeps missing, future and invalid actual times separate fr
     [{ start: 'invalid', end: null }],
     [{ start: '2026-11-20', end: 'invalid' }],
     [{ start: '2026-11-20', end: '2026-11-19' }],
-    [{ start: '2026-11-20', end: '2026-11-28' }],
     [{ start: '2026-11-20', end: '2026-11-21' }, { start: null, end: '2026-11-24' }]
   ]) assert.equal(span(make('developing', rounds)).state, 'unknown');
   assert.equal(span(make('developing', [{ start: '2026-11-20', end: null }], true)).state, 'unknown');
+  const futureEnd = span(make('developing', [{ start: '2026-11-20', end: '2026-11-28' }]));
+  assert.equal(futureEnd.endKey, '2026-11-28'); assert.equal(futureEnd.completed, false);
+  assert.match(timelineActualText(futureEnd), /实际已结束，状态未完成/);
   const terminal = span(make('delivered', [{ start: '2026-11-20', end: null }]));
   assert.equal(terminal.completed, false);
   assert.equal(terminal.end, null);

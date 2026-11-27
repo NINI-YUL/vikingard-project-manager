@@ -12,6 +12,7 @@ try {
   await pool.query('SELECT revision FROM management_state WHERE id=1');
   await pool.query('SELECT state FROM current_feedback LIMIT 0');
   await pool.query('SELECT status FROM notification_jobs LIMIT 0');
+  await pool.query('SELECT id FROM actual_time_corrections LIMIT 0');
   const source=config.teambition ? createTeambitionSource(config.teambition) : undefined;
   worker=config.loginEnabled && config.teambition?.pollingEnabled ? createPoller(pool,source,{corpId:config.dingtalk.corpId,projectId:config.teambition.projectId,intervalSeconds:config.teambition.pollIntervalSeconds??900,onError:()=>console.error('后台同步暂未完成；保留上次成功数据并等待重试')}) : undefined;
   server = createApplication(pool,config,{source});
