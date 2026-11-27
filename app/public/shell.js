@@ -1116,10 +1116,6 @@ function renderTaskPanel(version, tasks, management, current, onClose = () => na
   head.append(titleBox, close);
   panel.append(head);
 
-  if (!task) {
-    panel.append(node('div', 'notice', '该任务不在当前分页，基础信息来自版本计算事实。返回任务所在页可查看完整来源结构字段。'));
-  }
-
   const facts = node('dl', 'facts');
   const addFact = (label, value) => {
     const item = node('div', 'fact');
@@ -1129,8 +1125,8 @@ function renderTaskPanel(version, tasks, management, current, onClose = () => na
   addFact('来源工单 ID', task?.sourceTaskId || fact?.sourceTaskId);
   addFact('原始状态', task?.rawStatus || fact?.rawStatus);
   addFact('职能', (task?.functionName || fact?.functionName) || (task?.functionResolution === 'missing' ? '未填写' : '待配置'));
-  addFact('来源可用性', task ? (PRESENCE_NAMES[task.sourcePresence] ?? '待核对') : '计算事实未提供');
-  addFact('最近同步', task ? formatDate(task.lastSyncedAt) : '计算事实未提供');
+  addFact('来源可用性', PRESENCE_NAMES[task?.sourcePresence ?? fact?.sourcePresence] ?? '待核对');
+  addFact('最近同步', formatDate(task?.lastSyncedAt ?? fact?.lastSyncedAt));
   const parentSourceTaskId = task?.parentSourceTaskId ?? fact?.parentSourceTaskId;
   const parentKey = task?.parentVisibleKey || management?.items.find(item => item.sourceTaskId === parentSourceTaskId)?.key;
   addFact('父任务编号', parentKey ? formatTaskNumber(parentKey, version.uniqueIdPrefix) : parentSourceTaskId ? '父任务未纳入' : '无');
@@ -1158,7 +1154,8 @@ function renderTaskPanel(version, tasks, management, current, onClose = () => na
     const dev = fact.timing?.development?.workingDays;
     const test = fact.timing?.test?.workingDays;
     add('计划工作日', fact.planWorkingDays === null || fact.planWorkingDays === undefined ? '未知' : fact.planWorkingDays + ' 日');
-    add('到期判断', fact.due?.overdue ? '已逾期 ' + fact.due.workingDays + ' 个工作日' : fact.due?.dueSoon ? '3 个工作日内到期' : fact.due ? '未逾期' : '不可判断');
+    const terminalDue = fact.semantic === 'delivered' ? '已完成，无需到期提醒' : fact.semantic === 'non_delivery' ? '已结束，无需到期提醒' : null;
+    add('到期判断', terminalDue ?? (fact.due?.overdue ? '已逾期 ' + fact.due.workingDays + ' 个工作日' : fact.due?.dueSoon ? '3 个工作日内到期' : fact.due ? '未逾期' : '不可判断'));
     add('开发计时', dev === null || dev === undefined ? '未知' : dev + ' 个工作日');
     add('测试计时', test === null || test === undefined ? '未知' : test + ' 个工作日');
     section.append(facts2);

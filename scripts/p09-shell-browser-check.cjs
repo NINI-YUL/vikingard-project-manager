@@ -18,6 +18,7 @@ function fact(id, kind, functionName, due) {
   return {
     id, sourceTaskId: id, parentSourceTaskId: kind === 'requirement' ? null : 'root', title: id,
     typeName: kind === 'requirement' ? '需求' : kind === 'professional' ? '子需求' : '辅助子单',
+    sourcePresence: 'current', lastSyncedAt: '2026-11-27T02:48:33Z',
     kind, functionName, rawStatus: '开发中', semantic: 'developing', issues: [], due, timing: { development: {}, test: {} },
     requirementTitle: '测试核心需求', executorName: '测试执行者',
     plannedStartAt: '2026-11-20T10:00:00+08:00', planWorkingDays: due?.overdue ? 1 : 5,
@@ -73,7 +74,7 @@ function management(index) {
 }
 const tasks = Array.from({ length: 101 }, (_, index) => ({
   sourceTaskId: 'task-' + index, title: '测试任务 ' + index, visibleKey: String(107542 + index), parentVisibleKey: '107541', parentSourceTaskId: 'root',
-  typeName: '子需求', functionName: 'UI界面', sourcePresence: 'current', structureIssues: [], rawStatus: '开发中'
+  typeName: '子需求', functionName: 'UI界面', sourcePresence: 'current', lastSyncedAt: '2026-11-26T07:25:00Z', structureIssues: [], rawStatus: '开发中'
 }));
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 let server, browser;
@@ -94,6 +95,7 @@ const calendarFixture = {
     browser = await chromium.launch({ headless: true, channel: 'chrome' });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     page.setDefaultTimeout(10000);
+    const drawerFact = (drawer, label) => drawer.locator('.fact').filter({ has: page.locator('dt', { hasText: new RegExp('^' + label + '$') }) }).locator('dd');
     await page.clock.setFixedTime(new Date('2026-11-27T02:00:00Z'));
     const errors = [], consoleErrors = [], expectedHttpFailures = new Map();
     page.on('pageerror', error => errors.push(error.message));
@@ -329,6 +331,8 @@ const calendarFixture = {
     await page.getByRole('region', { name: '任务详情列表', exact: true }).locator('tbody tr').first().click();
     await page.locator('.task-panel').waitFor();
     assert.equal(await page.locator('.panel-title').innerText(), '测试任务 100');
+    assert.equal(await drawerFact(page.locator('.task-panel'), '来源可用性').innerText(), '本次可读');
+    assert.match(await drawerFact(page.locator('.task-panel'), '最近同步').innerText(), /2026.*11.*26.*15:25/);
     await page.reload();
     await page.locator('.task-panel').waitFor();
     assert.equal(await page.locator('.panel-title').innerText(), '测试任务 100');
@@ -406,6 +410,18 @@ const calendarFixture = {
     const taskDrawer = page.getByRole('dialog', { name: '任务详情', exact: true });
     await taskDrawer.waitFor();
     assert.equal(await taskDrawer.locator('.panel-title').innerText(), 'ui');
+    assert.equal(await drawerFact(taskDrawer, '来源可用性').innerText(), '本次可读');
+    assert.match(await drawerFact(taskDrawer, '最近同步').innerText(), /2026.*11.*27.*10:48/);
+    assert.equal(await drawerFact(taskDrawer, '到期判断').innerText(), '已完成，无需到期提醒');
+    assert.doesNotMatch(await taskDrawer.innerText(), /不在当前分页|计算事实未提供/);
+    for (const width of [375, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      assert.equal(await taskDrawer.evaluate(element => element.scrollWidth > element.clientWidth), false);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.screenshot({ path: path.join(output, 'p09-task-facts-' + width + '.png') });
+    }
+
+
     await taskDrawer.getByRole('button', { name: '来源动态', exact: true }).click();
     await taskDrawer.getByText('当前没有来源动态记录。', { exact: true }).waitFor();
     await taskDrawer.getByRole('button', { name: '关闭', exact: true }).click();
@@ -416,6 +432,30 @@ const calendarFixture = {
       await page.keyboard.press('Escape');
       await taskDrawer.waitFor({ state: 'detached' });
       assert.equal(await timelineTask.evaluate(element => document.activeElement === element), true);
+    }
+
+
+    // Fact-only drawers must distinguish terminal states from missing data.
+    const detailCases = [
+      { semantic: 'non_delivery', sourcePresence: 'archived', due: null, presence: '来源已归档', dueText: '已结束，无需到期提醒' },
+      { semantic: 'developing', sourcePresence: 'current', due: { overdue: true, workingDays: 2 }, presence: '本次可读', dueText: '已逾期 2 个工作日' },
+      { semantic: 'developing', sourcePresence: 'current', due: { overdue: false, dueSoon: true }, presence: '本次可读', dueText: '3 个工作日内到期' },
+      { semantic: 'developing', sourcePresence: 'current', due: { overdue: false }, presence: '本次可读', dueText: '未逾期' },
+      { semantic: 'developing', sourcePresence: null, due: null, presence: '待核对', dueText: '不可判断', lastSyncedAt: null }
+    ];
+    for (const entry of detailCases) {
+      await page.route('**/api/management/versions/*', async route => {
+        const data = management(0); data.items = data.items.map(item => item.id === 'ui' ? { ...item, ...entry } : item);
+        await route.fulfill({ json: data });
+      });
+      await page.reload(); await page.locator('.requirement-timeline-row').filter({ has: page.locator('b', { hasText: /^ui$/ }) }).click();
+      await taskDrawer.waitFor();
+      assert.equal(await drawerFact(taskDrawer, '来源可用性').innerText(), entry.presence);
+      assert.equal(await drawerFact(taskDrawer, '到期判断').innerText(), entry.dueText);
+      if (entry.lastSyncedAt === null) assert.equal(await drawerFact(taskDrawer, '最近同步').innerText(), '尚无记录');
+      assert.doesNotMatch(await taskDrawer.innerText(), /不在当前分页|计算事实未提供/);
+      await taskDrawer.getByRole('button', { name: '关闭', exact: true }).click();
+      await page.unroute('**/api/management/versions/*');
     }
 
     await page.goto(origin + '/?scenario=actual-timeline#/requirements?version=' + versionIds[0] + '&requirement=root');

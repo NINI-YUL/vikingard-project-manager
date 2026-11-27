@@ -18,7 +18,10 @@ test('P05 PostgreSQL config preview/save, inheritance, role checks, mapping reco
   const rule={kind:'rules',scope:'system',scopeKey:'system',values:{foundation:['UI界面'],detail:['后台'],concurrency:3},reason:'明确规则'};
   const preview=await changeManagement(pool,owner,rule);assert.equal(preview.affected.taskCount,2);assert.equal((await pool.query('SELECT count(*)::int AS n FROM management_rules')).rows[0].n,0);
   await save(rule);await save({kind:'rules',scope:'version',scopeKey:version.id,values:{detail:['动效']},reason:'版本例外'});await save({kind:'rules',scope:'requirement',scopeKey:root,values:{schedules:[{day:1,time:'09:00'}]},reason:'需求例外'});
-  let result=await managementResults(pool,version.id);assert.equal(result.requirements[0].rules.detail.source,'version');assert.equal(result.requirements[0].rules.foundation.source,'system');assert.equal(result.requirements[0].rules.schedules.source,'requirement');
+  let result=await managementResults(pool,version.id);
+  const factTask=result.items.find(i=>i.sourceTaskId===taskId),storedTask=(await pool.query('SELECT source_presence,last_synced_at FROM work_items WHERE source_task_id=$1',[taskId])).rows[0];
+  assert.equal(factTask.sourcePresence,storedTask.source_presence);assert.equal(new Date(factTask.lastSyncedAt).getTime(),storedTask.last_synced_at.getTime());
+  assert.equal(result.requirements[0].rules.detail.source,'version');assert.equal(result.requirements[0].rules.foundation.source,'system');assert.equal(result.requirements[0].rules.schedules.source,'requirement');
   await save({kind:'rules',scope:'version',scopeKey:version.id,values:{},restoreKeys:['detail'],reason:'恢复继承'});result=await managementResults(pool,version.id);assert.equal(result.requirements[0].rules.detail.source,'system');
   await assert.rejects(save({kind:'rules',scope:'version',scopeKey:version.id,values:{concurrency:5},reason:'禁止下层阈值'}),{status:400});
   await assert.rejects(save({kind:'rules',scope:'system',scopeKey:'system',values:{foundation:['后台']},reason:'禁止重叠'}),{status:400});
