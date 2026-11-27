@@ -1,3 +1,4 @@
+import {refreshActualTimeCorrections} from './actual-time.mjs';
 import {revalidateFeedback} from './feedback-state.mjs';
 import {resolveFunction} from './function-catalog.mjs';
 import { randomUUID } from 'node:crypto';
@@ -142,6 +143,7 @@ export async function syncVersion(pool, versionId, readSource, {actorId,reason:w
     await client.query("UPDATE source_sync_states SET cursor=$2,failure_count=0,next_due_at=clock_timestamp()+$3::integer * interval '1 second' WHERE managed_version_id=$1",[versionId,runId,intervalSeconds]);
     const result = {status:'succeeded',importedCount:items.length,issueCount:items.filter(i=>i.structureIssues.length).length,...(snapshot.reconciliations?.length?{reconciledCount:snapshot.reconciliations.length}:{})};
     await revalidateFeedback(client);
+    await refreshActualTimeCorrections(client,versionId);
     await audit(client,actorId,'version.sync.succeeded',{versionId,...result},why);
     return result;
   });

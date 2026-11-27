@@ -1,3 +1,4 @@
+import {readActualTime,saveActualTime} from './actual-time.mjs';
 import {configureFeedback,approveFeedbackReview,refreshFeedback,feedbackOverview,createFeedbackReader} from './feedback.mjs';
 import {planNotifications,recordNotificationAttempt,notificationOverview} from './notifications.mjs';
 import {managementCatalog,managementResults,changeManagement,verifyMappings} from './management.mjs';
@@ -8,7 +9,11 @@ import { Denied, requireRole, authenticate, logout, listPeople, changePerson, cr
 import { beginLogin, completeLogin } from './dingtalk.mjs';
 import { enrollVersion, syncVersion } from './version-source.mjs';
 
-const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
+const assets = new Map([['/', ['text/html; charset=utf-8','index.html']],['/acceptance', ['text/html; charset=utf-8','acceptance.html']],['/acceptance.html', ['text/html; charset=utf-8','acceptance.html']],['/app.js',['text/javascript; charset=utf-8','app.js']],['/shell.js',['text/javascript; charset=utf-8','shell.js']],['/shell.css',['text/css; charset=utf-8','shell.css']],['/function-catalog.mjs',['text/javascript; charset=utf-8','../function-catalog.mjs']],['/feedback-ui.js',['text/javascript; charset=utf-8','feedback-ui.js']],['/management-ui.js',['text/javascript; charset=utf-8','management-ui.js']],['/style.css',['text/css; charset=utf-8','style.css']]]);
+assets.set('/management-forms.html', ['text/html; charset=utf-8', 'management-forms.html']);
+for (const weight of [400, 500, 600, 700]) {
+  assets.set(`/assets/jakarta-${weight}.ttf`, ['font/ttf', `assets/jakarta-${weight}.ttf`]);
+}
 function cookies(req) {
   const result = {};
   for (const item of (req.headers.cookie ?? '').split(';')) {
@@ -31,17 +36,20 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
     res.setHeader('Cache-Control','no-store');
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('X-Content-Type-Options','nosniff');
-    res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
     res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
     if (config.origin.startsWith('https:')) res.setHeader('Strict-Transport-Security','max-age=86400');
     try {
       if (req.headers.host !== new URL(config.origin).host) throw new Denied(400,'访问地址不匹配');
       const url = new URL(req.url,config.origin), path = url.pathname, jar = cookies(req);
       if (req.method === 'GET' && assets.has(path)) {
-        const [type,file] = assets.get(path); res.writeHead(200,{'Content-Type':type}); return res.end(readFileSync(new URL('public/'+file,import.meta.url)));
+        const [type,file] = assets.get(path);
+        let content = readFileSync(new URL('public/'+file,import.meta.url));
+        if (file === 'acceptance.html') content = content.toString('utf8').replace('<!-- management-forms -->', readFileSync(new URL('public/management-forms.html',import.meta.url), 'utf8'));
+        res.writeHead(200,{'Content-Type':type}); return res.end(content);
       }
       if (req.method === 'GET' && path === '/healthz') {
-        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P07',loginEnabled:config.loginEnabled}); }
+        try { await pool.query('SELECT 1'); return json(res,200,{status:'ready',batch:'P09',loginEnabled:config.loginEnabled}); }
         catch { return json(res,503,{status:'unavailable'}); }
       }
       if (req.method === 'GET' && path === '/auth/dingtalk/start') {
@@ -80,6 +88,9 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         return json(res,200,await refreshFeedback(pool,actor,input,source,feedbackReader??createFeedbackReader(config)));
       }
       if(req.method==='GET'&&path==='/api/management')return json(res,200,await managementCatalog(pool));
+      const actualTime=path.match(/^\/api\/management\/versions\/([0-9a-f-]{36})\/items\/([0-9a-f-]{36})\/actual-time$/i);
+      if(actualTime&&req.method==='GET')return json(res,200,await readActualTime(pool,actor,actualTime[1],actualTime[2]));
+      if(actualTime&&req.method==='POST')return json(res,200,await saveActualTime(pool,actor,actualTime[1],actualTime[2],await body(req,65536)));
       const managementVersion=path.match(/^\/api\/management\/versions\/([0-9a-f-]{36})$/i);
       if(req.method==='GET'&&managementVersion)return json(res,200,await managementResults(pool,managementVersion[1]));
       if(req.method==='POST'&&['/api/management/preview','/api/management/save','/api/management/verify'].includes(path)){
@@ -87,19 +98,21 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         return json(res,200,path.endsWith('/verify')?await verifyMappings(pool,actor,input):await changeManagement(pool,actor,input,path.endsWith('/save')));
       }
       if (req.method === 'GET' && path === '/api/me') return json(res,200,actor);
-      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P07',sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'分层规则、状态语义、工作日历与阶段计算已接入；缺失证据保留未知。'});
+      if (req.method === 'GET' && path === '/api/status') return json(res,200,{batch:'P09',actualTimeEditing:true,actualTimeBatch:true,sourceConfigured:Boolean(source),pollingEnabled:Boolean(config.teambition?.pollingEnabled),message:'P09 正式页面壳、真实版本列表与任务下钻已接入；完整管理页面仍在开发。'});
       if (req.method === 'GET' && path === '/api/version-people') {
         requireRole(actor,'admin');
         return json(res,200,(await pool.query('SELECT p.id,p.display_name AS "displayName" FROM people p JOIN identity_mappings i ON i.person_id=p.id WHERE p.active AND i.enabled AND i.confirmed AND i.corp_id=$1 ORDER BY p.display_name,p.id',[config.dingtalk.corpId])).rows);
       }
       if (req.method === 'GET' && path === '/api/source-candidates') {
         requireRole(actor,'admin');
+        if (!source) return json(res,200,[]);
+        if (source.listVersions) return json(res,200,await source.listVersions());
         const choices=[];
-        for (const group of source?.candidates ?? []) for (const versionId of group.versionIds) choices.push(await source.getVersion(group.projectId,versionId));
+        for (const group of source.candidates ?? []) for (const versionId of group.versionIds) choices.push(await source.getVersion(group.projectId,versionId));
         return json(res,200,choices);
       }
       if (req.method === 'GET' && path === '/api/versions') {
-        const rows = await pool.query(`SELECT v.id,v.source_version_id AS "sourceVersionId",v.display_name AS "displayName",v.lifecycle,v.sync_start_at AS "syncStartAt",v.enrolled_at AS "enrolledAt",v.owner_id AS "ownerId",person.display_name AS "ownerName",p.teambition_project_id AS "projectId",p.display_name AS "projectName",s.last_status AS "syncStatus",s.last_success_at AS "lastSuccessAt",s.last_error_code AS "lastErrorCode",s.next_due_at AS "nextDueAt",s.failure_count AS "failureCount",EXISTS(SELECT 1 FROM identity_mappings oi JOIN people op ON op.id=oi.person_id WHERE oi.person_id=v.owner_id AND oi.enabled AND oi.confirmed AND op.active AND oi.corp_id=p.corp_id) AS "ownerConfirmed",p.config_version AS "configVersion",b.verified_at AS "bindingVerifiedAt" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id LEFT JOIN people person ON person.id=v.owner_id LEFT JOIN source_sync_states s ON s.managed_version_id=v.id LEFT JOIN source_bindings b ON b.source_project_id=p.id ORDER BY v.enrolled_at,v.id`);
+        const rows = await pool.query(`SELECT v.id,v.source_version_id AS "sourceVersionId",v.display_name AS "displayName",v.lifecycle,v.sync_start_at AS "syncStartAt",v.enrolled_at AS "enrolledAt",v.owner_id AS "ownerId",person.display_name AS "ownerName",p.teambition_project_id AS "projectId",p.display_name AS "projectName",s.last_status AS "syncStatus",s.last_success_at AS "lastSuccessAt",s.last_error_code AS "lastErrorCode",s.next_due_at AS "nextDueAt",s.failure_count AS "failureCount",EXISTS(SELECT 1 FROM identity_mappings oi JOIN people op ON op.id=oi.person_id WHERE oi.person_id=v.owner_id AND oi.enabled AND oi.confirmed AND op.active AND oi.corp_id=p.corp_id) AS "ownerConfirmed",b.unique_id_prefix AS "uniqueIdPrefix",p.config_version AS "configVersion",b.verified_at AS "bindingVerifiedAt" FROM managed_versions v JOIN source_projects p ON p.id=v.source_project_id LEFT JOIN people person ON person.id=v.owner_id LEFT JOIN source_sync_states s ON s.managed_version_id=v.id LEFT JOIN source_bindings b ON b.source_project_id=p.id ORDER BY v.enrolled_at,v.id`);
         return json(res,200,rows.rows);
       }
       if (req.method === 'POST' && path === '/api/versions') {
@@ -107,7 +120,7 @@ export function createApplication(pool,config,{ loginResolver, source, feedbackR
         const value = await body(req);
         if (Object.keys(value).some(k=>!['projectId','versionId','ownerId','reason'].includes(k)) || !/^[a-f0-9]{24}$/.test(value.projectId ?? '') || !/^[a-f0-9]{24}$/.test(value.versionId ?? '') || typeof value.reason!=='string' || !value.reason.trim() || value.reason.length>500) throw new Denied(400,'请核对项目、迭代和纳入原因');
         if (!source) throw new Denied(503,'来源读取尚未配置');
-        const verified = await source.getVersion(value.projectId,value.versionId);
+        const verified = await (source.getSelectableVersion ? source.getSelectableVersion(value.projectId,value.versionId) : source.getVersion(value.projectId,value.versionId));
         return json(res,201,await enrollVersion(pool,{...verified,corpId:config.dingtalk.corpId,ownerId:value.ownerId,reason:value.reason},actor.id));
       }
       const taskTarget = path.match(/^\/api\/versions\/([0-9a-f-]{36})\/tasks$/i);

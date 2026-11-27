@@ -21,7 +21,7 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
   let server;
   try{
     await t.test('迁移重复运行不重复建表；篡改迁移记录时失败',async()=>{
-      assert.equal(await migrate(pool),9);assert.equal(await migrate(pool),0);
+      assert.equal(await migrate(pool),10);assert.equal(await migrate(pool),0);
       await pool.query("UPDATE schema_migrations SET checksum='invalid'");await assert.rejects(migrate(pool));
       await pool.query('DELETE FROM schema_migrations');
       // Recover only the checksum in this isolated schema, without re-running DDL.
@@ -43,6 +43,8 @@ test('真实 PostgreSQL：迁移、OAuth、HTTP 权限及并发保护',{skip:!pr
       await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['008-feedback-current.sql',digest(sql8)]);
       const sql9=await readFile(new URL('../migrations/009-notification-jobs.sql',import.meta.url),'utf8');
       await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['009-notification-jobs.sql',digest(sql9)]);
+      const sql10=await readFile(new URL('../migrations/010-actual-time-corrections.sql',import.meta.url),'utf8');
+      await pool.query('INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)',['010-actual-time-corrections.sql',digest(sql10)]);
       assert.equal(await migrate(pool),0);
     });
     const approval={confirmed:true,corpId:'corp-test',reason:'隔离构造数据测试',people:[{displayName:'owner A',unionId:'owner-a',role:'owner'},{displayName:'owner B',unionId:'owner-b',role:'owner'},{displayName:'viewer',unionId:'viewer',role:'viewer'},{displayName:'admin',unionId:'admin',role:'admin'},{displayName:'none',unionId:'none',role:'none'}]};

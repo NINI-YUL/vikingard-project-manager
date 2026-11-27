@@ -12,8 +12,9 @@ try {
   await pool.query('SELECT revision FROM management_state WHERE id=1');
   await pool.query('SELECT state FROM current_feedback LIMIT 0');
   await pool.query('SELECT status FROM notification_jobs LIMIT 0');
+  await pool.query('SELECT id FROM actual_time_corrections LIMIT 0');
   const source=config.teambition ? createTeambitionSource(config.teambition) : undefined;
-  worker=config.loginEnabled && config.teambition?.pollingEnabled ? createPoller(pool,source,{corpId:config.dingtalk.corpId,projectId:config.teambition.projectId,versionIds:config.teambition.versionIds,intervalSeconds:config.teambition.pollIntervalSeconds??900,onError:()=>console.error('后台同步暂未完成；保留上次成功数据并等待重试')}) : undefined;
+  worker=config.loginEnabled && config.teambition?.pollingEnabled ? createPoller(pool,source,{corpId:config.dingtalk.corpId,projectId:config.teambition.projectId,intervalSeconds:config.teambition.pollIntervalSeconds??900,onError:()=>console.error('后台同步暂未完成；保留上次成功数据并等待重试')}) : undefined;
   server = createApplication(pool,config,{source});
   server.on('error',() => { console.error('应用启动失败，请检查地址与配置'); pool.end().finally(() => process.exit(1)); });
   server.listen(config.port,config.host,() => {console.log(`VikingPM P07 已启动；登录${config.loginEnabled ? '已启用' : '未启用'}`);worker?.start();});

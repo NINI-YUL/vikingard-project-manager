@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {effectiveRules,validateRules,validateEffective,validDay,workingDays,collectionDue,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency,durationDays} from '../app/management-engine.mjs';
+import {effectiveRules,validateRules,validateEffective,validDay,workingDays,calendarHours,collectionDue,objectKind,stages,versionProgress,optimizationSummary,timing,concurrency,durationDays} from '../app/management-engine.mjs';
 const maps={pending:{semantic:'not_started',markers:[]},dev:{semantic:'developing',markers:['development_start']},devEnd:{semantic:'processing',markers:['development_end']},test:{semantic:'testing',markers:['test_start']},testEnd:{semantic:'processing',markers:['test_end']},paused:{semantic:'paused',markers:[]},processing:{semantic:'processing',markers:[]},done:{semantic:'delivered',markers:[]},cancel:{semantic:'non_delivery',markers:[]}};
 const item=(id,type,parent=null,extra={})=>({id,managed_version_id:'v1',source_task_id:id,type_name:type,parent_source_task_id:parent,source_presence:'current',structure_issues:[],source_status_id:'done',...extra});
 test('P05 inheritance resolves each field, restores upstream and rejects combined overlap',()=>{
@@ -9,6 +9,11 @@ test('P05 inheritance resolves each field, restores upstream and rejects combine
  rules=effectiveRules([system,version]);assert.deepEqual(rules.foundation.value,['UI界面']);assert.equal(rules.foundation.source,'system');
  assert.throws(()=>validateRules({concurrency:5},'version'));assert.throws(()=>validateRules({schedules:[{day:2,time:'25:00'}]},'system'));assert.throws(()=>validateRules({schedules:[{day:2,time:'10:00'},{day:2,time:'10:00'}]},'system'));
  assert.throws(()=>validateEffective(effectiveRules([{scope:'version',values:{foundation:['后台']}}])));validateEffective(rules);
+});
+test('holidays ignore retained work intervals; make-up days still count working hours',()=>{
+ const intervals=[{start:'09:00',end:'12:00'}];
+ assert.equal(calendarHours('2026-11-16T01:00:00Z','2026-11-16T04:00:00Z',{'2026-11-16':{working:false,intervals}}),0);
+ assert.equal(calendarHours('2026-11-14T01:00:00Z','2026-11-14T04:00:00Z',{'2026-11-14':{working:true,intervals}}),3);
 });
 test('P05 calendar uses Shanghai dates, special workdays and no non-workday catch-up',()=>{
  assert.equal(validDay('2026-02-30'),false);assert.equal(validDay('2028-02-29'),true);
@@ -27,6 +32,36 @@ test('P05 stages require every selected function, check all descendants and roll
  defect.source_status_id='unmapped';assert.equal(stages(root,items,rules,maps,['后台']).test.complete,false);
  defect.source_status_id='done';defect.source_presence='missing_unknown';assert.equal(stages(root,items,rules,maps,['后台']).test.complete,false);
  assert.equal(stages(root,[root],rules,maps).test.complete,false);
+});
+test('stage counts use whole functions, accumulate detail scope and preserve unknown and exemptions',()=>{
+ const root=item('r','需求'),ui=item('ui','子需求','r',{function_name:'UI界面'}),ui2=item('ui2','子需求','r',{function_name:'UI界面',source_status_id:'dev'}),client=item('client','子需求','r',{function_name:'客户端'}),icon=item('icon','子需求','r',{function_name:'UI图标',source_status_id:'pending'});
+ const items=[root,ui,ui2,client,icon],rules=effectiveRules([{scope:'system',values:{foundation:['UI界面','客户端'],detail:['UI图标','后台']}}]);
+ let result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.completedCount,1);assert.equal(result.foundation.totalCount,2);assert.deepEqual(result.foundation.incompleteFunctions,['UI界面']);assert.equal(result.foundation.blockedTaskCount,1);
+ assert.equal(result.detail.completedCount,2);assert.equal(result.detail.totalCount,4);assert.deepEqual(result.detail.incompleteFunctions,['UI界面','UI图标']);assert.equal(result.detail.blockedTaskCount,2);
+ ui2.source_status_id='unmapped';result=stages(root,items,rules,maps);assert.equal(result.foundation.calculable,false);assert.equal(result.foundation.completedCount,1);assert.equal(result.detail.calculable,false);assert.deepEqual(result.detail.missingFunctions,['后台']);assert.deepEqual(result.detail.incompleteFunctions,['UI界面','UI图标','后台']);
+ ui2.source_status_id='cancel';icon.source_status_id='done';result=stages(root,items,rules,maps,['后台']);assert.equal(result.detail.complete,true);assert.equal(result.detail.completedCount,4);assert.equal(result.detail.blockedTaskCount,0);
+});
+test('P05 auxiliary and acceptance task trees can split recursively without professional-stage unknown',()=>{
+ const root=item('r','需求'),ui=item('ui','子需求','r',{function_name:'UI界面'}),accept=item('a','任务','r',{category:'验收总单'}),acceptChild=item('ac','任务','a'),aux=item('aux','任务','r'),auxChild=item('ac2','任务','aux'),auxGrandchild=item('ag','任务','ac2'),missing=item('missing','任务','not-exists');
+ const items=[root,ui,accept,acceptChild,aux,auxChild,auxGrandchild],bySource=new Map(items.map(i=>[i.source_task_id,i]));
+ assert.equal(objectKind(aux,bySource),'auxiliary');assert.equal(objectKind(auxChild,bySource),'auxiliary');assert.equal(objectKind(auxGrandchild,bySource),'auxiliary');
+ assert.equal(objectKind(acceptChild,bySource),'acceptance_task');assert.equal(objectKind(missing,bySource),'unknown');
+ const rules=effectiveRules([{scope:'system',values:{foundation:['UI界面'],detail:['后台']}}]);
+ let result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.calculable,true);assert.equal(result.foundation.complete,true);assert.equal(result.detail.calculable,true);assert.equal(result.detail.complete,true);assert.equal(result.test.complete,true);
+ auxGrandchild.source_status_id='unmapped';result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.calculable,true);assert.equal(result.detail.calculable,true);assert.equal(result.test.calculable,false);assert.equal(result.test.complete,false);
+ auxGrandchild.source_status_id='dev';result=stages(root,items,rules,maps,['后台']);
+ assert.equal(result.foundation.calculable,true);assert.equal(result.detail.calculable,true);assert.equal(result.test.complete,false);
+});
+test('P05 allows top-level standalone tasks without treating them as structure errors',()=>{
+ const standaloneTask=item('standalone','任务'),standaloneDefect=item('defect','缺陷'),child=item('child','任务','standalone'),missing=item('missing','任务','not-exists');
+ const bySource=new Map([standaloneTask,standaloneDefect,child,missing].map(i=>[i.source_task_id,i]));
+ assert.equal(objectKind(standaloneTask,bySource),'standalone');
+ assert.equal(objectKind(standaloneDefect,bySource),'standalone');
+ assert.equal(objectKind(child,bySource),'standalone');
+ assert.equal(objectKind(missing,bySource),'unknown');
 });
 test('P05 identifies acceptance by category/parent, never title; optimization counts and gates differ',()=>{
  const root=item('r','需求'),accept=item('a','任务','r',{category:'验收总单'}),task=item('at','任务','a'),wrong=item('wrong','任务','r',{title:'验收任务单'}),container=item('o','优化需求总单'),optimization=item('opt','优化需求','o'),child=item('ot','任务','opt',{source_status_id:'pending'});

@@ -53,7 +53,7 @@ test('P04 persistent checkpoints, histories, retry, restart pickup and owner gat
   await pool.query("UPDATE source_sync_states SET next_due_at=now()-interval '1 second' WHERE managed_version_id=$1",[id]);
   await pool.end();pool=poolFor({...db,options:'-c search_path='+schema});
   let calls=0;const source={read:async binding=>{assert.equal(binding.knownTaskIds[0],task);calls++;return snapshot();}};
-  const opts={corpId:'fake',projectId:project,versionIds:[version],intervalSeconds:900};
+  const opts={corpId:'fake',projectId:project,intervalSeconds:900};
   await createPoller(pool,source,opts).runOnce();assert.equal(calls,1);assert.equal((await state()).failure_count,0);
   const automatic=(await pool.query("SELECT actor_id FROM audit_events WHERE reason LIKE '系统轮询%' ORDER BY id DESC LIMIT 1")).rows[0];assert.equal(automatic.actor_id,null);
   await createPoller(pool,source,opts).runOnce();assert.equal(calls,1);

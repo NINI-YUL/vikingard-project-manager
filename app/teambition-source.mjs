@@ -10,7 +10,7 @@ const actions = new Map(['query','sprint-query','sfc-query','customfield-query',
 actions.set('task-detail',['task','query']);
 actions.set('task-activity',['task','activity']);
 export function validateTeambitionConfig(value) {
-  if (!value || !isAbsolute(value.cliPath ?? '') || !/\.exe$/i.test(value.cliPath) || !id(value.organizationId) || !id(value.projectId) || !Array.isArray(value.versionIds) || !value.versionIds.length || !value.versionIds.every(id) || !id(value.categoryFieldId) || !id(value.functionFieldId)) throw new Error('Teambition 只读来源配置不合法');
+  if (!value || !isAbsolute(value.cliPath ?? '') || !/\.exe$/i.test(value.cliPath) || !id(value.organizationId) || !id(value.projectId) || (value.versionIds != null && (!Array.isArray(value.versionIds) || !value.versionIds.every(id))) || !id(value.categoryFieldId) || !id(value.functionFieldId)) throw new Error('Teambition 只读来源配置不合法');
   if (value.pollingEnabled!=null && typeof value.pollingEnabled!=='boolean')throw new Error('轮询配置不合法');
   if(value.pollIntervalSeconds!=null && (!Number.isInteger(value.pollIntervalSeconds)||value.pollIntervalSeconds<60||value.pollIntervalSeconds>86400))throw new Error('轮询间隔不合法');
   return value;
@@ -48,22 +48,46 @@ function names(definitions) {
 }
 export function createTeambitionSource(config, query = createCliQuery(config.cliPath)) {
   validateTeambitionConfig(config);
-  function allowed(projectId, versionId) {
-    if (projectId !== config.projectId || !config.versionIds.includes(versionId)) throw new Error('来源超出已批准范围');
+  function allowedProject(projectId) {
+    if (projectId !== config.projectId) throw new Error('来源超出已批准项目范围');
   }
-  async function getVersion(projectId, versionId) {
-    allowed(projectId,versionId);
+  async function projectFor(projectId) {
+    allowedProject(projectId);
     const projects = rows(await query('query',['--project-id',projectId]));
     const project = projects.find(p => p.id === projectId);
     if (projects.length !== 1 || project?.organizationId !== config.organizationId || typeof project.name !== 'string') throw new Error('来源企业或项目不匹配');
+    return project;
+  }
+  async function listRows(action,args) {
+    const items=[],seen=new Set();let pageToken='';
+    for(let page=0;page<100;page++) {
+      const response=await query(action,[...args,'--page-size','500',...(pageToken?['--page-token',pageToken]:[])]);
+      if(!response || !Array.isArray(response.result) || (response.nextPageToken!=null && typeof response.nextPageToken!=='string')) throw new Error('来源迭代分页不完整');
+      items.push(...response.result);const next=response.nextPageToken||'';
+      if(!next)return items;
+      if(seen.has(next))throw new Error('来源迭代分页重复');seen.add(next);pageToken=next;
+    }
+    throw new Error('来源迭代分页未完成');
+  }
+  async function getVersion(projectId, versionId, {activeOnly=false}={}) {
+    const project=await projectFor(projectId);
     const versions = rows(await query('sprint-query',['--project-id',projectId,'--id',versionId]));
-    const version = versions.find(v => v.id === versionId && v.projectId === projectId);
+    const version = versions.find(v => (v.id ?? v._id) === versionId && (v.projectId ?? v._projectId) === projectId);
     if (versions.length !== 1 || !version || typeof version.name !== 'string') throw new Error('来源迭代不匹配');
-    return {projectId,versionId,projectName:project.name,versionName:version.name,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null};
+    if (activeOnly && version.status !== 'active') throw new Error('只能选择进行中的来源迭代');
+    return {projectId,versionId,projectName:project.name,versionName:version.name,status:version.status,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null};
+  }
+  async function listVersions() {
+    const project=await projectFor(config.projectId);
+    const versions=await listRows('sprint-query',['--project-id',config.projectId]);
+    const seen=new Set();
+    return versions.map(version=>({version,versionId:version?.id ?? version?._id,versionProjectId:version?.projectId ?? version?._projectId})).filter(({version,versionId,versionProjectId})=>versionProjectId===config.projectId&&version.status==='active'&&id(versionId)&&typeof version.name==='string'&&version.name.trim()&&!seen.has(versionId)&&seen.add(versionId)).map(({version,versionId})=>({projectId:config.projectId,versionId,projectName:project.name,versionName:version.name,status:version.status,uniqueIdPrefix:typeof project.uniqueIdPrefix==='string'&&project.uniqueIdPrefix.trim()?project.uniqueIdPrefix:null}));
   }
   return {
-    candidates: [{projectId:config.projectId,versionIds:[...config.versionIds]}],
+    projectId:config.projectId,
+    listVersions,
     getVersion,
+    getSelectableVersion:(projectId,versionId)=>getVersion(projectId,versionId,{activeOnly:true}),
     async read({projectId,sourceVersionId,knownTaskIds=[]}) {
       const project=await getVersion(projectId,sourceVersionId);
       const args = ['--project-id',projectId];
